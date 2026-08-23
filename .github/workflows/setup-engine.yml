@@ -1,4 +1,4 @@
-name: Build Persian Gulf Game Engine & APK (Fixed Icon)
+name: Build Full Game Engine APK
 
 on:
   workflow_dispatch:
@@ -18,24 +18,24 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Project Structure & Gradle Configs
+      - name: Setup Full Game Engine Project
         run: |
           mkdir -p app/src/main/java/com/persiangulf/gameengine/model
           mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
           mkdir -p app/src/main/java/com/persiangulf/gameengine/script
           mkdir -p app/src/main/java/com/persiangulf/gameengine/storage
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/ui
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/values-fa
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
-          # ایجاد آیکن ساده XML برای جلوگیری از خطای گم شدن ic_launcher
+          # آیکن‌ها
           cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:color="#090d16"/>
               <foreground android:color="#38bdf8"/>
           </adaptive-icon>
           EOF
-
           cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:color="#090d16"/>
@@ -43,39 +43,32 @@ jobs:
           </adaptive-icon>
           EOF
 
-          # تنظیمات gradle.properties برای سازگاری کامل AndroidX
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
           android.useAndroidX=true
           android.enableJetifier=true
           EOF
 
-          # زبان انگلیسی
           cat << 'EOF' > app/src/main/res/values/strings.xml
           <resources>
               <string name="app_name">Game Engine Persian Gulf</string>
-              <string name="btn_create">Create Object</string>
-              <string name="btn_play">Play Game</string>
           </resources>
           EOF
 
-          # زبان فارسی
           cat << 'EOF' > app/src/main/res/values-fa/strings.xml
           <resources>
               <string name="app_name">موتور بازی‌سازی خلیج فارس</string>
-              <string name="btn_create">افزودن شیء</string>
-              <string name="btn_play">اجرای بازی</string>
           </resources>
           EOF
 
-          # ۱. مدل داده‌ها (GameObject)
+          # ۱. مدل داده ابجکت‌ها (GameObject)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/GameObject.kt
           package com.persiangulf.gameengine.model
 
           data class GameObject(
               var id: String,
               var name: String,
-              var type: String,
+              var type: String, // player, platform, coin, enemy, box_3d
               var is3D: Boolean = false,
               var x: Float,
               var y: Float,
@@ -85,25 +78,30 @@ jobs:
               var depth: Float = 40f,
               var color: String = "#38bdf8",
               var speed: Float = 200f,
-              var jumpPower: Float = 600f,
               var script: String = ""
           )
           EOF
 
-          # ۲. مفسر اسکریپت (ScriptParser)
+          # ۲. مفسر اسکریپت پیشرفته (ScriptParser)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/script/ScriptParser.kt
           package com.persiangulf.gameengine.script
 
           import com.persiangulf.gameengine.model.GameObject
 
           class ScriptParser {
-              fun execute(obj: GameObject, command: String) {
-                  val parts = command.lowercase().trim().split(" ")
-                  if (parts.isEmpty()) return
-                  when (parts[0]) {
-                      "move_right" -> obj.x += obj.speed * 0.016f
-                      "move_left" -> obj.x -= obj.speed * 0.016f
-                      "set_color" -> { if (parts.size > 1) obj.color = parts[1] }
+              fun execute(obj: GameObject) {
+                  if (obj.script.isEmpty()) return
+                  val commands = obj.script.lowercase().split(";")
+                  for (cmd in commands) {
+                      val parts = cmd.trim().split(" ")
+                      if (parts.isEmpty()) continue
+                      when (parts[0]) {
+                          "move_right" -> obj.x += obj.speed * 0.016f
+                          "move_left" -> obj.x -= obj.speed * 0.016f
+                          "move_up" -> obj.y -= obj.speed * 0.016f
+                          "move_down" -> obj.y += obj.speed * 0.016f
+                          "set_color" -> { if (parts.size > 1) obj.color = parts[1] }
+                      }
                   }
               }
           }
@@ -121,7 +119,7 @@ jobs:
 
           class ProjectStorage(private val context: Context) {
               private val gson = Gson()
-              private val fileName = "persian_gulf_project.json"
+              private val fileName = "persian_gulf_engine_project.json"
 
               fun saveProject(objects: List<GameObject>) {
                   val json = gson.toJson(objects)
@@ -137,7 +135,7 @@ jobs:
           }
           EOF
 
-          # ۴. هسته گرافیکی بازی (GameEngineView)
+          # ۴. هسته گرافیکی و اجرای بازی (GameEngineView)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/GameEngineView.kt
           package com.persiangulf.gameengine.engine
 
@@ -159,7 +157,7 @@ jobs:
               private var player: GameObject? = objects.find { it.type == "player" } ?: objects.firstOrNull()
               private var playerVelocityY = 0f
               private val gravity = 850f
-              private var isGrounded = false
+              var isGrounded = false
 
               init { holder.addCallback(this) }
 
@@ -168,9 +166,7 @@ jobs:
                   thread = Thread(this)
                   thread?.start()
               }
-
               override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
-
               override fun surfaceDestroyed(holder: SurfaceHolder) {
                   running = false
                   try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
@@ -192,16 +188,17 @@ jobs:
                       if (!isGrounded) playerVelocityY += gravity * dt
                       p.y += playerVelocityY * dt
                       isGrounded = false
+
                       for (obj in objects) {
                           if (obj.type == "platform" || obj.type == "box_3d") {
                               if (p.x < obj.x + obj.width && p.x + p.width > obj.x &&
-                                  p.y + p.height >= obj.y && p.y + p.height <= obj.y + 25f && playerVelocityY > 0) {
+                                  p.y + p.height >= obj.y && p.y + p.height <= obj.y + 30f && playerVelocityY > 0) {
                                   p.y = obj.y - p.height
                                   playerVelocityY = 0f
                                   isGrounded = true
                               }
                           }
-                          if (obj.script.isNotEmpty()) scriptParser.execute(obj, obj.script)
+                          scriptParser.execute(obj)
                       }
                   }
               }
@@ -213,9 +210,9 @@ jobs:
                   val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
                   for (obj in sortedObjects) {
                       paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
-                      if (obj.is3D) {
+                      if (obj.is3D || obj.type == "box_3d") {
                           val dOff = obj.depth * 0.35f
-                          paint.alpha = 130
+                          paint.alpha = 120
                           canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
                           paint.alpha = 255
                           canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
@@ -237,11 +234,14 @@ jobs:
           }
           EOF
 
-          # ۵. اکتیویتی اصلی (MainActivity)
+          # ۵. محیط کاربری موتور (MainActivity) شامل پنل افزودن ابجکت، ویرایشگر اسکریپت و اجرا
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/MainActivity.kt
           package com.persiangulf.gameengine
 
+          import android.graphics.Color
           import android.os.Bundle
+          import android.view.Gravity
+          import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
           import com.persiangulf.gameengine.engine.GameEngineView
           import com.persiangulf.gameengine.model.GameObject
@@ -250,19 +250,105 @@ jobs:
           class MainActivity : AppCompatActivity() {
               private lateinit var storage: ProjectStorage
               private val gameObjects = mutableListOf<GameObject>()
+              private lateinit var rootLayout: FrameLayout
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   storage = ProjectStorage(this)
                   val loaded = storage.loadProject()
                   if (loaded.isEmpty()) {
-                      gameObjects.add(GameObject("1", "Player", "player", false, 100f, 400f, 0f, 60f, 60f, 40f, "#38bdf8", 200f, 600f, ""))
-                      gameObjects.add(GameObject("2", "Ground", "platform", true, 0f, 700f, 0f, 1080f, 100f, 50f, "#1e293b", 0f, 0f, ""))
+                      gameObjects.add(GameObject("1", "Player", "player", false, 100f, 300f, 0f, 60f, 60f, 40f, "#38bdf8", 200f, ""))
+                      gameObjects.add(GameObject("2", "Ground", "platform", true, 0f, 650f, 0f, 1080f, 100f, 50f, "#1e293b", 0f, ""))
                       storage.saveProject(gameObjects)
                   } else {
                       gameObjects.addAll(loaded)
                   }
-                  setContentView(GameEngineView(this, gameObjects))
+
+                  rootLayout = FrameLayout(this)
+                  setContentView(rootLayout)
+                  showEngineUI()
+              }
+
+              private fun showEngineUI() {
+                  rootLayout.removeAllViews()
+                  val engineView = GameEngineView(this, gameObjects)
+                  rootLayout.addView(engineView)
+
+                  // پنل ابزارهای موتور در بالای صفحه
+                  val topPanel = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER
+                      setBackgroundColor(Color.parseColor("#99090d16"))
+                      setPadding(20, 20, 20, 20)
+                  }
+
+                  val btnAdd = Button(this).textButton("افزودن شیء +") { showAddObjectDialog() }
+                  val btnPlay = Button(this).textButton("اجرای بازی ▶") { 
+                      Toast.makeText(this, "روی صفحه ضربه بزنید تا بازیکن بپرد!", Toast.LENGTH_LONG).show()
+                  }
+
+                  topPanel.addView(btnAdd)
+                  topPanel.addView(btnPlay)
+                  
+                  val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+                  params.gravity = Gravity.TOP
+                  rootLayout.addView(topPanel, params)
+              }
+
+              private fun showAddObjectDialog() {
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(40, 40, 40, 40)
+                  }
+
+                  val edtName = EditText(this).apply { hint = "نام شیء (مثل Coin یا Enemy)" }
+                  val spinnerType = Spinner(this).apply {
+                      adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("platform (سکو)", "coin (سکه)", "enemy (دشمن)", "box_3d (جعبه سه‌بعدی)"))
+                  }
+                  val edtScript = EditText(this).apply { hint = "اسکریپت (مثل: move_right; set_color #ff0000)" }
+
+                  layout.addView(edtName)
+                  layout.addView(spinnerType)
+                  layout.addView(edtScript)
+
+                  androidx.appcompat.app.AlertDialog.Builder(this)
+                      .setTitle("ساخت شیء جدید در موتور")
+                      .setView(layout)
+                      .setPositiveButton("ساخت") { _, _ ->
+                          val name = if (edtName.text.isNotEmpty()) edtName.text.toString() else "Object"
+                          val typeSel = spinnerType.selectedItem.toString().split(" ")[0]
+                          val script = edtScript.text.toString()
+                          
+                          val newObj = GameObject(
+                              id = System.currentTimeMillis().toString(),
+                              name = name,
+                              type = typeSel,
+                              is3D = typeSel == "box_3d",
+                              x = (100..400).random().toFloat(),
+                              y = 200f,
+                              width = 60f,
+                              height = 60f,
+                              color = if(typeSel == "coin") "#facc15" else if(typeSel == "enemy") "#ef4444" else "#10b981",
+                              script = script
+                          )
+                          gameObjects.add(newObj)
+                          storage.saveProject(gameObjects)
+                          showEngineUI()
+                          Toast.makeText(this, "شیء با موفقیت اضافه شد!", Toast.LENGTH_SHORT).show()
+                      }
+                      .setNegativeButton("لغو", null)
+                      .show()
+              }
+
+              private fun Button.textButton(text: String, onClick: () -> Unit): Button {
+                  this.text = text
+                  this.setOnClickListener { onClick() }
+                  this.setBackgroundColor(Color.parseColor("#38bdf8"))
+                  this.setTextColor(Color.parseColor("#090d16"))
+                  val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                  params.setMargins(10, 0, 10, 0)
+                  this.layoutParams = params
+                  return this
               }
 
               override fun onPause() {
@@ -272,7 +358,7 @@ jobs:
           }
           EOF
 
-          # ۶. فایل مانیفست اندروید
+          # ۶. مانیفست
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="com.persiangulf.gameengine">
@@ -293,27 +379,16 @@ jobs:
           </manifest>
           EOF
 
-          # ۷. تنظیمات ریشه (settings.gradle)
           cat << 'EOF' > settings.gradle
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "Game Engine Persian Gulf"
           include ':app'
           EOF
 
-          # ۸. تنظیمات Gradle اصلی پروژه (build.gradle ریشه)
           cat << 'EOF' > build.gradle
           plugins {
               id 'com.android.application' version '7.4.2' apply false
@@ -321,7 +396,6 @@ jobs:
           }
           EOF
 
-          # ۹. تنظیمات Gradle ماژول اپ با نسخه SDK سازگار (33)
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -337,15 +411,9 @@ jobs:
                   versionName "1.0"
               }
               buildTypes {
-                  release {
-                      minifyEnabled false
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                  }
+                  release { minifyEnabled false; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' }
               }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
+              compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
               kotlinOptions { jvmTarget = '1.8' }
           }
           dependencies {
@@ -373,5 +441,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Add adaptive mipmap icons to fix resource linking error" || echo "No changes"
+          git commit -m "Upgrade project to a full Game Engine with UI, object creator and script parser" || echo "No changes"
           git push
