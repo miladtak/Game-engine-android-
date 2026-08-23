@@ -1,4 +1,4 @@
-name: Build Persian Gulf Game Engine & APK (Stable SDK)
+name: Build Persian Gulf Game Engine & APK (Fixed Icon)
 
 on:
   workflow_dispatch:
@@ -26,6 +26,22 @@ jobs:
           mkdir -p app/src/main/java/com/persiangulf/gameengine/storage
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/values-fa
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+
+          # ایجاد آیکن ساده XML برای جلوگیری از خطای گم شدن ic_launcher
+          cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:color="#090d16"/>
+              <foreground android:color="#38bdf8"/>
+          </adaptive-icon>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:color="#090d16"/>
+              <foreground android:color="#38bdf8"/>
+          </adaptive-icon>
+          EOF
 
           # تنظیمات gradle.properties برای سازگاری کامل AndroidX
           cat << 'EOF' > gradle.properties
@@ -357,5 +373,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Fix compileSdk to 33 to match Gradle 7.4.2 compatibility" || echo "No changes"
+          git commit -m "Add adaptive mipmap icons to fix resource linking error" || echo "No changes"
           git push
