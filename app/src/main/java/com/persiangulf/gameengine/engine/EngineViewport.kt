@@ -9,8 +9,8 @@ import android.media.ToneGenerator
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import com.persiangulf.gameengine.model.Bullet
 import com.persiangulf.gameengine.model.GameObject3D
+import com.persiangulf.gameengine.model.Particle
 
 class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
     private var thread: Thread? = null
@@ -21,8 +21,12 @@ class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) :
     private var lastTouchY = 0f
     var isPlayMode = false
     
-    val bullets = mutableListOf<Bullet>()
+    val particles = mutableListOf<Particle>()
     private val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+
+    // موقعیت نور اصلی در محیط
+    var lightX = 300f
+    var lightY = 100f
 
     init { holder.addCallback(this) }
 
@@ -37,12 +41,18 @@ class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) :
         try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
     }
 
-    fun shootBullet() {
-        val player = objects.find { it.type == "player" } ?: objects.firstOrNull()
-        player?.let {
-            bullets.add(Bullet(it.x + (100f * it.scaleX), it.y + (50f * it.scaleY)))
-            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
+    fun spawnExplosion(x: Float, y: Float) {
+        for (i in 0..15) {
+            particles.add(
+                Particle(
+                    x, y,
+                    (-300..300).random().toFloat(),
+                    (-300..300).random().toFloat(),
+                    listOf("#facc15", "#ef4444", "#f97316").random()
+                )
+            )
         }
+        toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 40)
     }
 
     override fun run() {
@@ -53,37 +63,25 @@ class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) :
             lastTime = now
             if (dt < 0.1f) {
                 if (isPlayMode) updateGameLogic(dt)
+                updateParticles(dt)
                 drawScene()
             }
             try { Thread.sleep(16) } catch (e: InterruptedException) { e.printStackTrace() }
         }
     }
 
-    private fun updateGameLogic(dt: Float) {
-        // فیزیک گلوله‌ها
-        val bIterator = bullets.iterator()
-        while (bIterator.hasNext()) {
-            val bullet = bIterator.next()
-            bullet.x += bullet.speedX * dt
-            if (bullet.x > 1200f) {
-                bIterator.remove()
-                continue
-            }
-
-            // برخورد گلوله با اشیاء (Collision Detection)
-            for (obj in objects) {
-                if (obj.type != "player" && bullet.x >= obj.x && bullet.x <= obj.x + (100f * obj.scaleX) &&
-                    bullet.y >= obj.y && bullet.y <= obj.y + (100f * obj.scaleY)) {
-                    obj.health -= 25
-                    toneGen.startTone(ToneGenerator.TONE_CDMA_PIP, 40)
-                    if (obj.health <= 0) obj.colorHex = "#475569" // تغییر رنگ به علامت نابودی
-                    bIterator.remove()
-                    break
-                }
-            }
+    private fun updateParticles(dt: Float) {
+        val pIter = particles.iterator()
+        while (pIter.hasNext()) {
+            val p = pIter.next()
+            p.x += p.vx * dt
+            p.y += p.vy * dt
+            p.life -= dt * 2f
+            if (p.life <= 0f) pIter.remove()
         }
+    }
 
-        // فیزیک جاذبه
+    private fun updateGameLogic(dt: Float) {
         for (obj in objects) {
             if (obj.hasGravity && obj.y < 600f) {
                 obj.velocityY += 980f * dt
@@ -99,43 +97,56 @@ class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) :
     private fun drawScene() {
         if (!holder.surface.isValid) return
         val canvas: Canvas = holder.lockCanvas()
-        canvas.drawColor(Color.parseColor("#0f172a"))
+        canvas.drawColor(Color.parseColor("#090d16"))
 
-        // گرید زمین
-        paint.color = Color.parseColor("#334155")
+        // ۱. رسم نور محیطی (Light Source Glow)
+        paint.color = Color.parseColor("#fef08a")
+        paint.alpha = 40
+        canvas.drawCircle(lightX, lightY, 180f, paint)
+        paint.alpha = 255
+        canvas.drawCircle(lightX, lightY, 20f, paint)
+
+        // ۲. رسم گرید و زمین
+        paint.color = Color.parseColor("#1e293b")
         paint.strokeWidth = 2f
         for (i in 0..1080 step 100) canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 2000f, paint)
-
-        // خط زمین
+        
         paint.color = Color.parseColor("#22c55e")
         paint.strokeWidth = 6f
         canvas.drawLine(0f, 660f, 1080f, 660f, paint)
 
-        // رندر گلوله‌ها
-        paint.color = Color.parseColor("#ef4444")
-        for (bullet in bullets) {
-            canvas.drawCircle(bullet.x, bullet.y, bullet.radius, paint)
+        // ۳. رندر ذرات (Particle Effects)
+        for (p in particles) {
+            paint.color = Color.parseColor(p.colorHex)
+            paint.alpha = (p.life * 255).toInt().coerceIn(0, 255)
+            canvas.drawCircle(p.x, p.y, 8f * p.life, paint)
         }
 
-        // رندر اشیاء
+        // ۴. رندر اشیاء با سایه پویا بر اساس منبع نور
         for (obj in objects) {
             val width = 100f * obj.scaleX
             val height = 100f * obj.scaleY
 
-            // سایه
-            paint.color = Color.parseColor("#000000")
-            paint.alpha = 80
-            canvas.drawOval(obj.x, 650f, obj.x + width, 670f, paint)
+            // محاسبه زوایای سایه متناسب با موقعیت نور
+            val shadowOffsetX = (obj.x - lightX) * 0.2f
+            val shadowOffsetY = (650f - lightY) * 0.1f
 
-            // بدنه
+            // سایه متحرک سه‌بعدی
+            paint.color = Color.parseColor("#000000")
+            paint.alpha = 90
+            canvas.drawOval(obj.x + shadowOffsetX, 650f + shadowOffsetY, obj.x + width + shadowOffsetX, 670f + shadowOffsetY, paint)
+
+            // بدنه شیء
             paint.color = Color.parseColor(if (obj.colorHex.startsWith("#")) obj.colorHex else "#38bdf8")
             paint.alpha = 255
             canvas.drawRect(obj.x, obj.y, obj.x + width, obj.y + height, paint)
 
-            // نوار سلامتی در صورت آسیب
-            if (obj.health < 100) {
-                paint.color = Color.parseColor("#22c55e")
-                canvas.drawRect(obj.x, obj.y - 15f, obj.x + (width * (obj.health / 100f)), obj.y - 5f, paint)
+            // خطوط تکسچر/بافت
+            if (obj.textureStyle == "grid") {
+                paint.color = Color.BLACK
+                paint.strokeWidth = 3f
+                canvas.drawLine(obj.x, obj.y + height / 2, obj.x + width, obj.y + height / 2, paint)
+                canvas.drawLine(obj.x + width / 2, obj.y, obj.x + width / 2, obj.y + height, paint)
             }
 
             // کادر انتخاب

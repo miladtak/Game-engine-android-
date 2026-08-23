@@ -19,8 +19,8 @@ class MainActivity : AppCompatActivity() {
         storage = ProjectStorage(this)
         val loaded = storage.loadProject()
         if (loaded.isEmpty()) {
-            gameObjects.add(GameObject3D("1", "Player", "player", 100f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", false))
-            gameObjects.add(GameObject3D("2", "Enemy", "enemy", 600f, 500f, 0f, 1f, 1.2f, 1f, "#ef4444", true))
+            gameObjects.add(GameObject3D("1", "Player", "player", 150f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", "grid", false))
+            gameObjects.add(GameObject3D("2", "Enemy_Box", "enemy", 600f, 500f, 0f, 1.2f, 1.2f, 1f, "#ef4444", "solid", true))
             storage.saveProject(gameObjects)
         } else {
             gameObjects.addAll(loaded)
@@ -30,43 +30,29 @@ class MainActivity : AppCompatActivity() {
         viewport = EngineViewport(this, gameObjects)
         mainLayout.addView(viewport)
 
-        // پنل بالای صفحه
+        // نوار ابزار اصلی بالای موتور «پارس»
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#cc0f172a"))
             setPadding(15, 15, 15, 15)
         }
 
-        val btnAdd = Button(this).apply { text = "+ افزودن شیء"; setOnClickListener { addNewObject() } }
+        val btnAdd = Button(this).apply { text = "+ ساخت شیء"; setOnClickListener { addNewObject() } }
         val btnInspect = Button(this).apply { text = "⚙ تنظیمات"; setOnClickListener { openInspector() } }
-        val btnMode = Button(this).apply {
-            text = "▶ حالت بازی"
+        val btnFx = Button(this).apply {
+            text = "💥 افکت ذرات"
             setOnClickListener {
-                viewport.isPlayMode = !viewport.isPlayMode
-                text = if (viewport.isPlayMode) "⏸ حالت ویرایش" else "▶ حالت بازی"
+                viewport.selectedObject?.let { obj -> viewport.spawnExplosion(obj.x + 50f, obj.y + 50f) }
             }
         }
 
         topBar.addView(btnAdd)
         topBar.addView(btnInspect)
-        topBar.addView(btnMode)
+        topBar.addView(btnFx)
 
         val topParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         topParams.gravity = Gravity.TOP
         mainLayout.addView(topBar, topParams)
-
-        // دکمه شلیک لمسی
-        val btnShoot = Button(this).apply {
-            text = "🔥 شلیک"
-            setBackgroundColor(Color.parseColor("#ef4444"))
-            setTextColor(Color.WHITE)
-            setOnClickListener { viewport.shootBullet() }
-        }
-        val shootParams = FrameLayout.LayoutParams(250, 150).apply {
-            gravity = Gravity.BOTTOM or Gravity.RIGHT
-            setMargins(0, 0, 40, 40)
-        }
-        mainLayout.addView(btnShoot, shootParams)
 
         setContentView(mainLayout)
     }
@@ -74,21 +60,22 @@ class MainActivity : AppCompatActivity() {
     private fun addNewObject() {
         val newObj = GameObject3D(
             id = System.currentTimeMillis().toString(),
-            name = "Enemy_${gameObjects.size}",
-            type = "enemy",
-            x = 500f,
+            name = "Object_${gameObjects.size}",
+            type = "cube",
+            x = 400f,
             y = 300f,
-            colorHex = "#facc15"
+            colorHex = "#facc15",
+            textureStyle = "grid"
         )
         gameObjects.add(newObj)
         storage.saveProject(gameObjects)
-        Toast.makeText(this, "دشمن جدید اضافه شد!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "شیء جدید در موتور پارس ساخته شد!", Toast.LENGTH_SHORT).show()
     }
 
     private fun openInspector() {
         val obj = viewport.selectedObject
         if (obj == null) {
-            Toast.makeText(this, "یک شیء را لمس کنید!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "لطفاً ابتدا یک شیء را انتخاب کنید!", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -98,21 +85,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         val edtColor = EditText(this).apply { hint = "کد رنگ"; setText(obj.colorHex) }
-        val chkGravity = CheckBox(this).apply { text = "جاذبه"; isChecked = obj.hasGravity }
+        val chkGravity = CheckBox(this).apply { text = "فعال بودن جاذبه"; isChecked = obj.hasGravity }
 
-        layout.addView(TextView(this).apply { text = "ویرایش: ${obj.name}" })
+        layout.addView(TextView(this).apply { text = "تنظیمات موتور پارس - ${obj.name}" })
         layout.addView(edtColor)
         layout.addView(chkGravity)
 
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Inspector")
+            .setTitle("Pars Inspector")
             .setView(layout)
             .setPositiveButton("ذخیره") { _, _ ->
                 obj.colorHex = edtColor.text.toString()
                 obj.hasGravity = chkGravity.isChecked
                 storage.saveProject(gameObjects)
             }
-            .setNegativeButton("حذف") { _, _ ->
+            .setNegativeButton("حذف شیء") { _, _ ->
                 gameObjects.remove(obj)
                 viewport.selectedObject = null
                 storage.saveProject(gameObjects)

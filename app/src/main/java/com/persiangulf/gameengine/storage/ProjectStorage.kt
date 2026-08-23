@@ -8,7 +8,7 @@ import java.io.File
 
 class ProjectStorage(private val context: Context) {
     private val gson = Gson()
-    private val fileName = "engine_3d_project.json"
+    private val fileName = "pars_engine_3d_project.json"
 
     fun saveProject(objects: List<GameObject3D>) {
         val json = gson.toJson(objects)
