@@ -1,4 +1,4 @@
-name: Build Persian Gulf Game Engine & APK
+name: Build Persian Gulf Game Engine & APK (Android 6 to 16)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Project Structure & Gradle Properties
+      - name: Setup Project Structure & Gradle Configs
         run: |
           mkdir -p app/src/main/java/com/persiangulf/gameengine/model
           mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
@@ -27,7 +27,7 @@ jobs:
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/values-fa
 
-          # فعال‌سازی AndroidX و Jetifier برای رفع خطای بیلد
+          # تنظیمات gradle.properties برای سازگاری کامل AndroidX
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -305,18 +305,18 @@ jobs:
           }
           EOF
 
-          # ۹. تنظیمات Gradle ماژول اپ (app/build.gradle)
+          # ۹. تنظیمات Gradle ماژول اپ با minSdk 23 (اندروید ۶ به بالا) و targetSdk 35 (سازگار با اندروید ۱۵ و ۱۶)
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
               id 'org.jetbrains.kotlin.android'
           }
           android {
-              compileSdk 33
+              compileSdk 35
               defaultConfig {
                   applicationId "com.persiangulf.gameengine"
-                  minSdk 21
-                  targetSdk 33
+                  minSdk 23
+                  targetSdk 35
                   versionCode 1
                   versionName "1.0"
               }
@@ -357,5 +357,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Enable android.useAndroidX in gradle.properties to fix build" || echo "No changes"
+          git commit -m "Configure minSdk 23 and targetSdk 35 for Android 6-16 support" || echo "No changes"
           git push
