@@ -3373,8 +3373,6 @@ string bottomsheet_action_expand
 string bottomsheet_action_expand_halfway
 string bottomsheet_drag_handle_clicked
 string bottomsheet_drag_handle_content_description
-string btn_create
-string btn_play
 string character_counter_content_description
 string character_counter_overflowed_content_description
 string character_counter_pattern

@@ -3,7 +3,7 @@ package com.persiangulf.gameengine.model
 data class GameObject(
     var id: String,
     var name: String,
-    var type: String,
+    var type: String, // player, platform, coin, enemy, box_3d
     var is3D: Boolean = false,
     var x: Float,
     var y: Float,
@@ -13,6 +13,5 @@ data class GameObject(
     var depth: Float = 40f,
     var color: String = "#38bdf8",
     var speed: Float = 200f,
-    var jumpPower: Float = 600f,
     var script: String = ""
 )

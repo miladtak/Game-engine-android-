@@ -18,7 +18,7 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
     private var player: GameObject? = objects.find { it.type == "player" } ?: objects.firstOrNull()
     private var playerVelocityY = 0f
     private val gravity = 850f
-    private var isGrounded = false
+    var isGrounded = false
 
     init { holder.addCallback(this) }
 
@@ -27,9 +27,7 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
         thread = Thread(this)
         thread?.start()
     }
-
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
-
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         running = false
         try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
@@ -51,16 +49,17 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
             if (!isGrounded) playerVelocityY += gravity * dt
             p.y += playerVelocityY * dt
             isGrounded = false
+
             for (obj in objects) {
                 if (obj.type == "platform" || obj.type == "box_3d") {
                     if (p.x < obj.x + obj.width && p.x + p.width > obj.x &&
-                        p.y + p.height >= obj.y && p.y + p.height <= obj.y + 25f && playerVelocityY > 0) {
+                        p.y + p.height >= obj.y && p.y + p.height <= obj.y + 30f && playerVelocityY > 0) {
                         p.y = obj.y - p.height
                         playerVelocityY = 0f
                         isGrounded = true
                     }
                 }
-                if (obj.script.isNotEmpty()) scriptParser.execute(obj, obj.script)
+                scriptParser.execute(obj)
             }
         }
     }
@@ -72,9 +71,9 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
         val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
         for (obj in sortedObjects) {
             paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
-            if (obj.is3D) {
+            if (obj.is3D || obj.type == "box_3d") {
                 val dOff = obj.depth * 0.35f
-                paint.alpha = 130
+                paint.alpha = 120
                 canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
                 paint.alpha = 255
                 canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)

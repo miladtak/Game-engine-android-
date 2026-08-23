@@ -8,7 +8,7 @@ import java.io.File
 
 class ProjectStorage(private val context: Context) {
     private val gson = Gson()
-    private val fileName = "persian_gulf_project.json"
+    private val fileName = "persian_gulf_engine_project.json"
 
     fun saveProject(objects: List<GameObject>) {
         val json = gson.toJson(objects)

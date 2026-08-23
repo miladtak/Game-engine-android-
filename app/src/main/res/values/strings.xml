@@ -1,5 +1,3 @@
 <resources>
     <string name="app_name">Game Engine Persian Gulf</string>
-    <string name="btn_create">Create Object</string>
-    <string name="btn_play">Play Game</string>
 </resources>
