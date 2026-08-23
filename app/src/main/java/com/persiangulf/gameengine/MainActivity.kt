@@ -5,112 +5,105 @@ import android.os.Bundle
 import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.persiangulf.gameengine.engine.GameEngineView
-import com.persiangulf.gameengine.model.GameObject
+import com.persiangulf.gameengine.engine.EngineViewport
+import com.persiangulf.gameengine.model.GameObject3D
 import com.persiangulf.gameengine.storage.ProjectStorage
 
 class MainActivity : AppCompatActivity() {
     private lateinit var storage: ProjectStorage
-    private val gameObjects = mutableListOf<GameObject>()
-    private lateinit var rootLayout: FrameLayout
+    private val gameObjects = mutableListOf<GameObject3D>()
+    private lateinit var viewport: EngineViewport
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         storage = ProjectStorage(this)
         val loaded = storage.loadProject()
         if (loaded.isEmpty()) {
-            gameObjects.add(GameObject("1", "Player", "player", false, 100f, 300f, 0f, 60f, 60f, 40f, "#38bdf8", 200f, ""))
-            gameObjects.add(GameObject("2", "Ground", "platform", true, 0f, 650f, 0f, 1080f, 100f, 50f, "#1e293b", 0f, ""))
+            gameObjects.add(GameObject3D("1", "Cube_Player", 200f, 300f, 0f, 1f, 1f, 1f, "#38bdf8", true))
             storage.saveProject(gameObjects)
         } else {
             gameObjects.addAll(loaded)
         }
 
-        rootLayout = FrameLayout(this)
-        setContentView(rootLayout)
-        showEngineUI()
-    }
+        val mainLayout = FrameLayout(this)
+        viewport = EngineViewport(this, gameObjects)
+        mainLayout.addView(viewport)
 
-    private fun showEngineUI() {
-        rootLayout.removeAllViews()
-        val engineView = GameEngineView(this, gameObjects)
-        rootLayout.addView(engineView)
-
-        // پنل ابزارهای موتور در بالای صفحه
-        val topPanel = LinearLayout(this).apply {
+        // پنل کنترل بالای صفحه
+        val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#99090d16"))
+            setBackgroundColor(Color.parseColor("#cc0f172a"))
             setPadding(20, 20, 20, 20)
         }
 
-        val btnAdd = Button(this).textButton("افزودن شیء +") { showAddObjectDialog() }
-        val btnPlay = Button(this).textButton("اجرای بازی ▶") { 
-            Toast.makeText(this, "روی صفحه ضربه بزنید تا بازیکن بپرد!", Toast.LENGTH_LONG).show()
+        val btnAdd = Button(this).apply { text = "+ افزودن شیء"; setOnClickListener { addNewObject() } }
+        val btnInspect = Button(this).apply { text = "⚙ تنظیمات شیء"; setOnClickListener { openInspector() } }
+        val btnMode = Button(this).apply {
+            text = "▶ اجرای فیزیک"
+            setOnClickListener {
+                viewport.isPlayMode = !viewport.isPlayMode
+                text = if (viewport.isPlayMode) "⏸ ویرایش" else "▶ اجرای فیزیک"
+            }
         }
 
-        topPanel.addView(btnAdd)
-        topPanel.addView(btnPlay)
-        
+        topBar.addView(btnAdd)
+        topBar.addView(btnInspect)
+        topBar.addView(btnMode)
+
         val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         params.gravity = Gravity.TOP
-        rootLayout.addView(topPanel, params)
+        mainLayout.addView(topBar, params)
+
+        setContentView(mainLayout)
     }
 
-    private fun showAddObjectDialog() {
+    private fun addNewObject() {
+        val newObj = GameObject3D(
+            id = System.currentTimeMillis().toString(),
+            name = "Object_${gameObjects.size + 1}",
+            x = 400f,
+            y = 200f,
+            colorHex = listOf("#ef4444", "#10b981", "#facc15", "#a855f7").random()
+        )
+        gameObjects.add(newObj)
+        storage.saveProject(gameObjects)
+        Toast.makeText(this, "شیء جدید ساخته شد. لمس کنید و بکشید!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openInspector() {
+        val obj = viewport.selectedObject
+        if (obj == null) {
+            Toast.makeText(this, "لطفاً ابتدا یک شیء را روی صفحه لمس کنید!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 40, 40, 40)
         }
 
-        val edtName = EditText(this).apply { hint = "نام شیء (مثل Coin یا Enemy)" }
-        val spinnerType = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("platform (سکو)", "coin (سکه)", "enemy (دشمن)", "box_3d (جعبه سه‌بعدی)"))
-        }
-        val edtScript = EditText(this).apply { hint = "اسکریپت (مثل: move_right; set_color #ff0000)" }
+        val txtInfo = TextView(this).apply { text = "ویرایش شیء: ${obj.name}"; textSize = 18f }
+        val edtColor = EditText(this).apply { hint = "کد رنگ (مثلاً #ff0000)"; setText(obj.colorHex) }
+        val chkGravity = CheckBox(this).apply { text = "فعال بودن جاذبه"; isChecked = obj.hasGravity }
 
-        layout.addView(edtName)
-        layout.addView(spinnerType)
-        layout.addView(edtScript)
+        layout.addView(txtInfo)
+        layout.addView(edtColor)
+        layout.addView(chkGravity)
 
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("ساخت شیء جدید در موتور")
+            .setTitle("Inspector (تنظیمات شیء)")
             .setView(layout)
-            .setPositiveButton("ساخت") { _, _ ->
-                val name = if (edtName.text.isNotEmpty()) edtName.text.toString() else "Object"
-                val typeSel = spinnerType.selectedItem.toString().split(" ")[0]
-                val script = edtScript.text.toString()
-                
-                val newObj = GameObject(
-                    id = System.currentTimeMillis().toString(),
-                    name = name,
-                    type = typeSel,
-                    is3D = typeSel == "box_3d",
-                    x = (100..400).random().toFloat(),
-                    y = 200f,
-                    width = 60f,
-                    height = 60f,
-                    color = if(typeSel == "coin") "#facc15" else if(typeSel == "enemy") "#ef4444" else "#10b981",
-                    script = script
-                )
-                gameObjects.add(newObj)
+            .setPositiveButton("ثبت") { _, _ ->
+                obj.colorHex = edtColor.text.toString()
+                obj.hasGravity = chkGravity.isChecked
                 storage.saveProject(gameObjects)
-                showEngineUI()
-                Toast.makeText(this, "شیء با موفقیت اضافه شد!", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("لغو", null)
+            .setNegativeButton("حذف شیء") { _, _ ->
+                gameObjects.remove(obj)
+                viewport.selectedObject = null
+                storage.saveProject(gameObjects)
+            }
             .show()
-    }
-
-    private fun Button.textButton(text: String, onClick: () -> Unit): Button {
-        this.text = text
-        this.setOnClickListener { onClick() }
-        this.setBackgroundColor(Color.parseColor("#38bdf8"))
-        this.setTextColor(Color.parseColor("#090d16"))
-        val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        params.setMargins(10, 0, 10, 0)
-        this.layoutParams = params
-        return this
     }
 
     override fun onPause() {
