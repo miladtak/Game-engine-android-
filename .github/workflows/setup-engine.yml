@@ -18,7 +18,7 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Project Structure & Gradle Configs
+      - name: Setup Project Structure & Gradle Properties
         run: |
           mkdir -p app/src/main/java/com/persiangulf/gameengine/model
           mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
@@ -26,6 +26,13 @@ jobs:
           mkdir -p app/src/main/java/com/persiangulf/gameengine/storage
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/values-fa
+
+          # فعال‌سازی AndroidX و Jetifier برای رفع خطای بیلد
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
 
           # زبان انگلیسی
           cat << 'EOF' > app/src/main/res/values/strings.xml
@@ -114,7 +121,7 @@ jobs:
           }
           EOF
 
-          # ۴. هسته گرافیکی بازی (GameEngineView) - اصلاح شده بدون خطای restore
+          # ۴. هسته گرافیکی بازی (GameEngineView)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/GameEngineView.kt
           package com.persiangulf.gameengine.engine
 
@@ -350,5 +357,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Fix canvas restore error and build APK successfully" || echo "No changes"
+          git commit -m "Enable android.useAndroidX in gradle.properties to fix build" || echo "No changes"
           git push
