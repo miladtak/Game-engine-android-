@@ -1,4 +1,4 @@
-name: Build Persian Gulf Game Engine & APK (Android 6 to 16)
+name: Build Persian Gulf Game Engine & APK (Stable SDK)
 
 on:
   workflow_dispatch:
@@ -305,18 +305,18 @@ jobs:
           }
           EOF
 
-          # ۹. تنظیمات Gradle ماژول اپ با minSdk 23 (اندروید ۶ به بالا) و targetSdk 35 (سازگار با اندروید ۱۵ و ۱۶)
+          # ۹. تنظیمات Gradle ماژول اپ با نسخه SDK سازگار (33)
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
               id 'org.jetbrains.kotlin.android'
           }
           android {
-              compileSdk 35
+              compileSdk 33
               defaultConfig {
                   applicationId "com.persiangulf.gameengine"
                   minSdk 23
-                  targetSdk 35
+                  targetSdk 33
                   versionCode 1
                   versionName "1.0"
               }
@@ -357,5 +357,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Configure minSdk 23 and targetSdk 35 for Android 6-16 support" || echo "No changes"
+          git commit -m "Fix compileSdk to 33 to match Gradle 7.4.2 compatibility" || echo "No changes"
           git push
