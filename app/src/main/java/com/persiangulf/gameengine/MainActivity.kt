@@ -3,6 +3,7 @@ package com.persiangulf.gameengine
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.persiangulf.gameengine.engine.EngineViewport
@@ -19,8 +20,8 @@ class MainActivity : AppCompatActivity() {
         storage = ProjectStorage(this)
         val loaded = storage.loadProject()
         if (loaded.isEmpty()) {
-            gameObjects.add(GameObject3D("1", "Player", "player", 150f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", "grid", false))
-            gameObjects.add(GameObject3D("2", "Enemy_Box", "enemy", 600f, 500f, 0f, 1.2f, 1.2f, 1f, "#ef4444", "solid", true))
+            gameObjects.add(GameObject3D("1", "SkeletalPlayer", "player", 200f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", "solid", false))
+            gameObjects.add(GameObject3D("2", "Monster", "enemy", 700f, 500f, 0f, 1.2f, 1.2f, 1f, "#ef4444", "solid", true))
             storage.saveProject(gameObjects)
         } else {
             gameObjects.addAll(loaded)
@@ -30,29 +31,62 @@ class MainActivity : AppCompatActivity() {
         viewport = EngineViewport(this, gameObjects)
         mainLayout.addView(viewport)
 
-        // نوار ابزار اصلی بالای موتور «پارس»
+        // نوار ابزار اصلی موتور «پارس»
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#cc0f172a"))
             setPadding(15, 15, 15, 15)
         }
 
-        val btnAdd = Button(this).apply { text = "+ ساخت شیء"; setOnClickListener { addNewObject() } }
-        val btnInspect = Button(this).apply { text = "⚙ تنظیمات"; setOnClickListener { openInspector() } }
-        val btnFx = Button(this).apply {
-            text = "💥 افکت ذرات"
+        val btnAdd = Button(this).apply { text = "+ دشمن جدید"; setOnClickListener { addNewObject() } }
+        val btnMode = Button(this).apply {
+            text = "▶ تست بازی"
             setOnClickListener {
-                viewport.selectedObject?.let { obj -> viewport.spawnExplosion(obj.x + 50f, obj.y + 50f) }
+                viewport.isPlayMode = !viewport.isPlayMode
+                text = if (viewport.isPlayMode) "⏸ حالت ویرایش" else "▶ تست بازی"
             }
         }
 
         topBar.addView(btnAdd)
-        topBar.addView(btnInspect)
-        topBar.addView(btnFx)
+        topBar.addView(btnMode)
 
         val topParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         topParams.gravity = Gravity.TOP
         mainLayout.addView(topBar, topParams)
+
+        // دکمه‌های حرکت انیمیشنی به چپ و راست
+        val controllerLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val btnLeft = Button(this).apply { text = "◀ چپ" }
+        btnLeft.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
+                viewport.movePlayer(-1f)
+            } else if (event.action == MotionEvent.ACTION_UP) {
+                viewport.stopPlayer()
+            }
+            true
+        }
+
+        val btnRight = Button(this).apply { text = "راست ▶" }
+        btnRight.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
+                viewport.movePlayer(1f)
+            } else if (event.action == MotionEvent.ACTION_UP) {
+                viewport.stopPlayer()
+            }
+            true
+        }
+
+        controllerLayout.addView(btnLeft)
+        controllerLayout.addView(btnRight)
+
+        val ctrlParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.LEFT
+            setMargins(30, 0, 0, 30)
+        }
+        mainLayout.addView(controllerLayout, ctrlParams)
 
         setContentView(mainLayout)
     }
@@ -60,51 +94,15 @@ class MainActivity : AppCompatActivity() {
     private fun addNewObject() {
         val newObj = GameObject3D(
             id = System.currentTimeMillis().toString(),
-            name = "Object_${gameObjects.size}",
-            type = "cube",
-            x = 400f,
-            y = 300f,
-            colorHex = "#facc15",
-            textureStyle = "grid"
+            name = "Enemy_${gameObjects.size}",
+            type = "enemy",
+            x = (500..1200).random().toFloat(),
+            y = 500f,
+            colorHex = "#ef4444"
         )
         gameObjects.add(newObj)
         storage.saveProject(gameObjects)
-        Toast.makeText(this, "شیء جدید در موتور پارس ساخته شد!", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun openInspector() {
-        val obj = viewport.selectedObject
-        if (obj == null) {
-            Toast.makeText(this, "لطفاً ابتدا یک شیء را انتخاب کنید!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(30, 30, 30, 30)
-        }
-
-        val edtColor = EditText(this).apply { hint = "کد رنگ"; setText(obj.colorHex) }
-        val chkGravity = CheckBox(this).apply { text = "فعال بودن جاذبه"; isChecked = obj.hasGravity }
-
-        layout.addView(TextView(this).apply { text = "تنظیمات موتور پارس - ${obj.name}" })
-        layout.addView(edtColor)
-        layout.addView(chkGravity)
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Pars Inspector")
-            .setView(layout)
-            .setPositiveButton("ذخیره") { _, _ ->
-                obj.colorHex = edtColor.text.toString()
-                obj.hasGravity = chkGravity.isChecked
-                storage.saveProject(gameObjects)
-            }
-            .setNegativeButton("حذف شیء") { _, _ ->
-                gameObjects.remove(obj)
-                viewport.selectedObject = null
-                storage.saveProject(gameObjects)
-            }
-            .show()
+        Toast.makeText(this, "دشمن جدید اضافه شد!", Toast.LENGTH_SHORT).show()
     }
 
     override fun onPause() {
