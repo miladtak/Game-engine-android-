@@ -114,7 +114,7 @@ jobs:
           }
           EOF
 
-          # ۴. هسته گرافیکی بازی (GameEngineView)
+          # ۴. هسته گرافیکی بازی (GameEngineView) - اصلاح شده بدون خطای restore
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/GameEngineView.kt
           package com.persiangulf.gameengine.engine
 
@@ -201,7 +201,6 @@ jobs:
                           canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
                       }
                   }
-                  canvas.restore()
                   holder.unlockCanvasAndPost(canvas)
               }
 
@@ -351,5 +350,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Use Java 11 and stable Gradle 7.4.2 configuration" || echo "No changes"
+          git commit -m "Fix canvas restore error and build APK successfully" || echo "No changes"
           git push
