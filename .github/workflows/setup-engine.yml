@@ -1,10 +1,10 @@
-name: Build APK and Persian/English Localization
+name: Build Persian Gulf Game Engine & APK
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -18,12 +18,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Localization (Persian & English Strings)
+      - name: Setup Project Structure & Localization
         run: |
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/model
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/script
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/storage
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/values-fa
 
-          # زبان پیش‌فرض (انگلیسی)
+          # زبان انگلیسی
           cat << 'EOF' > app/src/main/res/values/strings.xml
           <resources>
               <string name="app_name">Game Engine Persian Gulf</string>
@@ -41,19 +45,296 @@ jobs:
           </resources>
           EOF
 
+          # ۱. مدل داده‌ها (GameObject)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/GameObject.kt
+          package com.persiangulf.gameengine.model
+
+          data class GameObject(
+              var id: String,
+              var name: String,
+              var type: String,
+              var is3D: Boolean = false,
+              var x: Float,
+              var y: Float,
+              var z: Float = 0f,
+              var width: Float,
+              var height: Float,
+              var depth: Float = 40f,
+              var color: String = "#38bdf8",
+              var speed: Float = 200f,
+              var jumpPower: Float = 600f,
+              var script: String = ""
+          )
+          EOF
+
+          # ۲. مفسر اسکریپت (ScriptParser)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/script/ScriptParser.kt
+          package com.persiangulf.gameengine.script
+
+          import com.persiangulf.gameengine.model.GameObject
+
+          class ScriptParser {
+              fun execute(obj: GameObject, command: String) {
+                  val parts = command.lowercase().trim().split(" ")
+                  if (parts.isEmpty()) return
+                  when (parts[0]) {
+                      "move_right" -> obj.x += obj.speed * 0.016f
+                      "move_left" -> obj.x -= obj.speed * 0.016f
+                      "set_color" -> { if (parts.size > 1) obj.color = parts[1] }
+                  }
+              }
+          }
+          EOF
+
+          # ۳. ذخیره‌سازی پروژه (ProjectStorage)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/storage/ProjectStorage.kt
+          package com.persiangulf.gameengine.storage
+
+          import android.content.Context
+          import com.google.gson.Gson
+          import com.google.gson.reflect.TypeToken
+          import com.persiangulf.gameengine.model.GameObject
+          import java.io.File
+
+          class ProjectStorage(private val context: Context) {
+              private val gson = Gson()
+              private val fileName = "persian_gulf_project.json"
+
+              fun saveProject(objects: List<GameObject>) {
+                  val json = gson.toJson(objects)
+                  File(context.filesDir, fileName).writeText(json)
+              }
+
+              fun loadProject(): MutableList<GameObject> {
+                  val file = File(context.filesDir, fileName)
+                  if (!file.exists()) return mutableListOf()
+                  val type = object : TypeToken<MutableList<GameObject>>() {}.type
+                  return gson.fromJson(file.readText(), type) ?: mutableListOf()
+              }
+          }
+          EOF
+
+          # ۴. هسته گرافیکی بازی (GameEngineView)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/GameEngineView.kt
+          package com.persiangulf.gameengine.engine
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.view.MotionEvent
+          import android.view.SurfaceHolder
+          import android.view.SurfaceView
+          import com.persiangulf.gameengine.model.GameObject
+          import com.persiangulf.gameengine.script.ScriptParser
+
+          class GameEngineView(context: Context, private val objects: MutableList<GameObject>) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
+              private var thread: Thread? = null
+              private var running = false
+              private val paint = Paint()
+              private val scriptParser = ScriptParser()
+              private var player: GameObject? = objects.find { it.type == "player" } ?: objects.firstOrNull()
+              private var playerVelocityY = 0f
+              private val gravity = 850f
+              private var isGrounded = false
+
+              init { holder.addCallback(this) }
+
+              override fun surfaceCreated(holder: SurfaceHolder) {
+                  running = true
+                  thread = Thread(this)
+                  thread?.start()
+              }
+
+              override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+              override fun surfaceDestroyed(holder: SurfaceHolder) {
+                  running = false
+                  try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
+              }
+
+              override fun run() {
+                  var lastTime = System.nanoTime()
+                  while (running) {
+                      val now = System.nanoTime()
+                      val dt = (now - lastTime) / 1000000000f
+                      lastTime = now
+                      if (dt < 0.1f) { update(dt); draw() }
+                      try { Thread.sleep(16) } catch (e: InterruptedException) { e.printStackTrace() }
+                  }
+              }
+
+              private fun update(dt: Float) {
+                  player?.let { p ->
+                      if (!isGrounded) playerVelocityY += gravity * dt
+                      p.y += playerVelocityY * dt
+                      isGrounded = false
+                      for (obj in objects) {
+                          if (obj.type == "platform" || obj.type == "box_3d") {
+                              if (p.x < obj.x + obj.width && p.x + p.width > obj.x &&
+                                  p.y + p.height >= obj.y && p.y + p.height <= obj.y + 25f && playerVelocityY > 0) {
+                                  p.y = obj.y - p.height
+                                  playerVelocityY = 0f
+                                  isGrounded = true
+                              }
+                          }
+                          if (obj.script.isNotEmpty()) scriptParser.execute(obj, obj.script)
+                      }
+                  }
+              }
+
+              private fun draw() {
+                  if (!holder.surface.isValid) return
+                  val canvas: Canvas = holder.lockCanvas()
+                  canvas.drawColor(Color.parseColor("#090d16"))
+                  val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
+                  for (obj in sortedObjects) {
+                      paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
+                      if (obj.is3D) {
+                          val dOff = obj.depth * 0.35f
+                          paint.alpha = 130
+                          canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
+                          paint.alpha = 255
+                          canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
+                      } else {
+                          paint.alpha = 255
+                          canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
+                      }
+                  }
+                  holder.unlockCanvasAndPost(canvas)
+              }
+
+              override fun onTouchEvent(event: MotionEvent): Boolean {
+                  if (event.action == MotionEvent.ACTION_DOWN && isGrounded) {
+                      playerVelocityY = -680f
+                      isGrounded = false
+                  }
+                  return true
+              }
+          }
+          EOF
+
+          # ۵. اکتیویتی اصلی (MainActivity)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/MainActivity.kt
+          package com.persiangulf.gameengine
+
+          import android.os.Bundle
+          import androidx.appcompat.app.AppCompatActivity
+          import com.persiangulf.gameengine.engine.GameEngineView
+          import com.persiangulf.gameengine.model.GameObject
+          import com.persiangulf.gameengine.storage.ProjectStorage
+
+          class MainActivity : AppCompatActivity() {
+              private lateinit var storage: ProjectStorage
+              private val gameObjects = mutableListOf<GameObject>()
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  storage = ProjectStorage(this)
+                  val loaded = storage.loadProject()
+                  if (loaded.isEmpty()) {
+                      gameObjects.add(GameObject("1", "Player", "player", false, 100f, 400f, 0f, 60f, 60f, 40f, "#38bdf8", 200f, 600f, ""))
+                      gameObjects.add(GameObject("2", "Ground", "platform", true, 0f, 700f, 0f, 1080f, 100f, 50f, "#1e293b", 0f, 0f, ""))
+                      storage.saveProject(gameObjects)
+                  } else {
+                      gameObjects.addAll(loaded)
+                  }
+                  setContentView(GameEngineView(this, gameObjects))
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  storage.saveProject(gameObjects)
+              }
+          }
+          EOF
+
+          # ۶. فایل مانیفست اندروید
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.persiangulf.gameengine">
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="@string/app_name"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # ۷. تنظیمات Gradle اصلی
+          cat << 'EOF' > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies {
+                  classpath "com.android.tools.build:gradle:7.4.2"
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+              }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          EOF
+
+          # ۸. تنظیمات Gradle اپ
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              compileSdk 33
+              defaultConfig {
+                  applicationId "com.persiangulf.gameengine"
+                  minSdk 21
+                  targetSdk 33
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+              kotlinOptions { jvmTarget = '1.8' }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.9.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.8.0'
+              implementation 'com.google.code.gson:gson:2.9.1'
+          }
+          EOF
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew || true
 
-      - name: Build Debug APK with Gradle
+      - name: Build Debug APK
         run: |
-          # اگر گریل‌ویو نبود، ساختار گریدل را آماده کن و خروجی بگیر
           gradle wrapper --gradle-version 7.5 || true
-          ./gradlew assembleDebug || ./gradlew build || echo "Build check completed"
+          ./gradlew assembleDebug
 
-      - name: Commit Code and Localization
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersianGulfEngine-Debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit and Push changes
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Add Persian/English localization and setup build workflow" || echo "No changes to commit"
+          git commit -m "Build full Persian Gulf Engine with APK artifact and localization" || echo "No changes"
           git push
