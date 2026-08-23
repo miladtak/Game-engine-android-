@@ -15,9 +15,9 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
     private var running = false
     private val paint = Paint()
     
-    private var player: GameObject? = objects.find { it.type == "player" }
+    private var player: GameObject? = objects.find { type == "player" } || objects.firstOrNull()
     private var playerVelocityY = 0f
-    private val gravity = 800f
+    private val gravity = 850f
     private var isGrounded = false
 
     init {
@@ -66,12 +66,14 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
 
     private fun update(dt: Float) {
         player?.let { p ->
+            // اعمال فیزیک جاذبه
             if (!isGrounded) {
                 playerVelocityY += gravity * dt
             }
             p.y += playerVelocityY * dt
 
-            // فیزیک برخورد با سکوهای دوبعدی و سه‌بعدی
+            // بررسی برخورد با زمین و سکوها
+            isGrounded = false
             for (obj in objects) {
                 if (obj.type == "platform" || obj.type == "box_3d") {
                     if (p.x < obj.x + obj.width && p.x + p.width > obj.x &&
@@ -89,28 +91,25 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
         if (!holder.surface.isValid) return
         val canvas: Canvas = holder.lockCanvas()
         
-        // پس‌زمینه محیط بازی
-        canvas.drawColor(Color.parseColor("#0f172a"))
+        # رنگ پس‌زمینه محیط بازی (خلیج فارس / دارک فانتزی)
+        canvas.drawColor(Color.parseColor("#090d16"))
 
-        // مرتب‌سازی المان‌ها بر اساس عمق (برای نمایش صحیح سه‌بعدی و ایزومتریک)
+        // مرتب‌سازی لایه‌ها برای نمایش صحیح دوبعدی و سه‌بعدی (براساس Z و Y)
         val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
 
         for (obj in sortedObjects) {
             paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
             
             if (obj.is3D) {
-                // شبیه‌سازی سه‌بعدی و جعبه‌ای با ترسیم لایه‌های مکعبی
-                val depthOffset = obj.depth * 0.4f
+                // رندر سه‌بعدی جعبه‌ای (مکعب ایزومتریک)
+                val dOff = obj.depth * 0.35f
+                paint.alpha = 140
+                canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
                 
-                // سایه و وجه پایینی مکعب سه‌بعدی
-                paint.alpha = 150
-                canvas.drawRect(obj.x + depthOffset, obj.y - depthOffset, obj.x + obj.width + depthOffset, obj.y + obj.height - depthOffset, paint)
-                
-                // وجه اصلی مکعب سه‌بعدی
                 paint.alpha = 255
                 canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
             } else {
-                // المان استاندارد دوبعدی
+                // رندر دوبعدی استاندارد
                 paint.alpha = 255
                 canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
             }
@@ -122,7 +121,7 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN) {
             if (isGrounded) {
-                playerVelocityY = -650f
+                playerVelocityY = -680f
                 isGrounded = false
             }
         }
