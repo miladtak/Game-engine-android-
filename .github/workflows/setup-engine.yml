@@ -1,4 +1,4 @@
-name: Build Modular Game Engine - Module 1 (3D Scene & Gizmo)
+name: Upgrade Persian Gulf Game Engine - Module 2 (Shooting, Physics & Joystick)
 
 on:
   workflow_dispatch:
@@ -18,13 +18,12 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Game Engine Core Module
+      - name: Upgrade Game Engine Project
         run: |
           mkdir -p app/src/main/java/com/persiangulf/gameengine/model
           mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
           mkdir -p app/src/main/java/com/persiangulf/gameengine/storage
           mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/values-fa
           mkdir -p app/src/main/res/mipmap-anydpi-v26
 
           cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
@@ -52,13 +51,27 @@ jobs:
           </resources>
           EOF
 
-          # ۱. مدل سه‌بعدی پیشرفته اشیاء (GameObject3D)
+          # ۱. مدل داده گلوله‌ها (Bullet)
+          cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/Bullet.kt
+          package com.persiangulf.gameengine.model
+
+          data class Bullet(
+              var x: Float,
+              var y: Float,
+              var speedX: Float = 800f,
+              var radius: Float = 12f,
+              var isAlive: Boolean = true
+          )
+          EOF
+
+          # ۲. آپدیت مدل اصلی اشیاء (GameObject3D)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/GameObject3D.kt
           package com.persiangulf.gameengine.model
 
           data class GameObject3D(
               var id: String,
               var name: String,
+              var type: String = "cube", // player, enemy, coin, platform
               var x: Float = 0f,
               var y: Float = 0f,
               var z: Float = 0f,
@@ -67,13 +80,13 @@ jobs:
               var scaleZ: Float = 1f,
               var colorHex: String = "#38bdf8",
               var hasGravity: Boolean = true,
-              var mass: Float = 1.0f,
+              var health: Int = 100,
               var velocityY: Float = 0f,
               var isSelected: Boolean = false
           )
           EOF
 
-          # ۲. ذخیره‌ساز سه‌بعدی
+          # ۳. ذخیره‌ساز سه‌بعدی
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/storage/ProjectStorage.kt
           package com.persiangulf.gameengine.storage
 
@@ -101,7 +114,7 @@ jobs:
           }
           EOF
 
-          # ۳. هسته رندر سه‌بعدی و جا‌به‌جایی لمسی (Viewport)
+          # ۴. هسته اصلی رندر و فیزیک شلیک (EngineViewport)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/EngineViewport.kt
           package com.persiangulf.gameengine.engine
 
@@ -109,9 +122,12 @@ jobs:
           import android.graphics.Canvas
           import android.graphics.Color
           import android.graphics.Paint
+          import android.media.AudioManager
+          import android.media.ToneGenerator
           import android.view.MotionEvent
           import android.view.SurfaceHolder
           import android.view.SurfaceView
+          import com.persiangulf.gameengine.model.Bullet
           import com.persiangulf.gameengine.model.GameObject3D
 
           class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
@@ -122,6 +138,9 @@ jobs:
               private var lastTouchX = 0f
               private var lastTouchY = 0f
               var isPlayMode = false
+              
+              val bullets = mutableListOf<Bullet>()
+              private val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
 
               init { holder.addCallback(this) }
 
@@ -136,6 +155,14 @@ jobs:
                   try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
               }
 
+              fun shootBullet() {
+                  val player = objects.find { it.type == "player" } ?: objects.firstOrNull()
+                  player?.let {
+                      bullets.add(Bullet(it.x + (100f * it.scaleX), it.y + (50f * it.scaleY)))
+                      toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
+                  }
+              }
+
               override fun run() {
                   var lastTime = System.nanoTime()
                   while (running) {
@@ -143,17 +170,41 @@ jobs:
                       val dt = (now - lastTime) / 1000000000f
                       lastTime = now
                       if (dt < 0.1f) {
-                          if (isPlayMode) updatePhysics(dt)
+                          if (isPlayMode) updateGameLogic(dt)
                           drawScene()
                       }
                       try { Thread.sleep(16) } catch (e: InterruptedException) { e.printStackTrace() }
                   }
               }
 
-              private fun updatePhysics(dt: Float) {
+              private fun updateGameLogic(dt: Float) {
+                  // فیزیک گلوله‌ها
+                  val bIterator = bullets.iterator()
+                  while (bIterator.hasNext()) {
+                      val bullet = bIterator.next()
+                      bullet.x += bullet.speedX * dt
+                      if (bullet.x > 1200f) {
+                          bIterator.remove()
+                          continue
+                      }
+
+                      // برخورد گلوله با اشیاء (Collision Detection)
+                      for (obj in objects) {
+                          if (obj.type != "player" && bullet.x >= obj.x && bullet.x <= obj.x + (100f * obj.scaleX) &&
+                              bullet.y >= obj.y && bullet.y <= obj.y + (100f * obj.scaleY)) {
+                              obj.health -= 25
+                              toneGen.startTone(ToneGenerator.TONE_CDMA_PIP, 40)
+                              if (obj.health <= 0) obj.colorHex = "#475569" // تغییر رنگ به علامت نابودی
+                              bIterator.remove()
+                              break
+                          }
+                      }
+                  }
+
+                  // فیزیک جاذبه
                   for (obj in objects) {
                       if (obj.hasGravity && obj.y < 600f) {
-                          obj.velocityY += 980f * dt * obj.mass
+                          obj.velocityY += 980f * dt
                           obj.y += obj.velocityY * dt
                           if (obj.y >= 600f) {
                               obj.y = 600f
@@ -168,39 +219,45 @@ jobs:
                   val canvas: Canvas = holder.lockCanvas()
                   canvas.drawColor(Color.parseColor("#0f172a"))
 
-                  // رسم گرید زمین (Grid Axis)
+                  // گرید زمین
                   paint.color = Color.parseColor("#334155")
-                  paint.strokeWidth = 3f
+                  paint.strokeWidth = 2f
                   for (i in 0..1080 step 100) canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 2000f, paint)
-                  for (i in 0..2000 step 100) canvas.drawLine(0f, i.toFloat(), 1080f, i.toFloat(), paint)
 
-                  // رسم خط زمین اصلی
+                  // خط زمین
                   paint.color = Color.parseColor("#22c55e")
                   paint.strokeWidth = 6f
                   canvas.drawLine(0f, 660f, 1080f, 660f, paint)
 
-                  // رندر اشیاء سه‌بعدی با افکت پرسپکتیو ساده
+                  // رندر گلوله‌ها
+                  paint.color = Color.parseColor("#ef4444")
+                  for (bullet in bullets) {
+                      canvas.drawCircle(bullet.x, bullet.y, bullet.radius, paint)
+                  }
+
+                  // رندر اشیاء
                   for (obj in objects) {
                       val width = 100f * obj.scaleX
                       val height = 100f * obj.scaleY
-                      val depthOffset = obj.z * 0.4f
 
                       // سایه
                       paint.color = Color.parseColor("#000000")
                       paint.alpha = 80
                       canvas.drawOval(obj.x, 650f, obj.x + width, 670f, paint)
 
-                      // بدنه سه‌بعدی
+                      // بدنه
                       paint.color = Color.parseColor(if (obj.colorHex.startsWith("#")) obj.colorHex else "#38bdf8")
                       paint.alpha = 255
                       canvas.drawRect(obj.x, obj.y, obj.x + width, obj.y + height, paint)
 
-                      // وجه سه‌بعدی (3D Extrude Effect)
-                      paint.alpha = 150
-                      canvas.drawRect(obj.x + depthOffset, obj.y - depthOffset, obj.x + width + depthOffset, obj.y + height - depthOffset, paint)
+                      // نوار سلامتی در صورت آسیب
+                      if (obj.health < 100) {
+                          paint.color = Color.parseColor("#22c55e")
+                          canvas.drawRect(obj.x, obj.y - 15f, obj.x + (width * (obj.health / 100f)), obj.y - 5f, paint)
+                      }
 
-                      // کادر انتخاب (Selection Gizmo)
-                      if (obj == selectedObject) {
+                      // کادر انتخاب
+                      if (obj == selectedObject && !isPlayMode) {
                           paint.style = Paint.Style.STROKE
                           paint.color = Color.parseColor("#f59e0b")
                           paint.strokeWidth = 5f
@@ -223,7 +280,6 @@ jobs:
                               val h = 100f * obj.scaleY
                               x >= obj.x && x <= obj.x + w && y >= obj.y && y <= obj.y + h
                           }
-                          objects.forEach { it.isSelected = (it == selectedObject) }
                           lastTouchX = x
                           lastTouchY = y
                       }
@@ -241,7 +297,7 @@ jobs:
           }
           EOF
 
-          # ۴. اکتیویتی اصلی ویرایشگر (MainActivity UI)
+          # ۵. رابط کاربری اصلی همراه با دکمه شلیک و کنترلر (MainActivity)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/MainActivity.kt
           package com.persiangulf.gameengine
 
@@ -264,7 +320,8 @@ jobs:
                   storage = ProjectStorage(this)
                   val loaded = storage.loadProject()
                   if (loaded.isEmpty()) {
-                      gameObjects.add(GameObject3D("1", "Cube_Player", 200f, 300f, 0f, 1f, 1f, 1f, "#38bdf8", true))
+                      gameObjects.add(GameObject3D("1", "Player", "player", 100f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", false))
+                      gameObjects.add(GameObject3D("2", "Enemy", "enemy", 600f, 500f, 0f, 1f, 1.2f, 1f, "#ef4444", true))
                       storage.saveProject(gameObjects)
                   } else {
                       gameObjects.addAll(loaded)
@@ -274,20 +331,20 @@ jobs:
                   viewport = EngineViewport(this, gameObjects)
                   mainLayout.addView(viewport)
 
-                  // پنل کنترل بالای صفحه
+                  // پنل بالای صفحه
                   val topBar = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       setBackgroundColor(Color.parseColor("#cc0f172a"))
-                      setPadding(20, 20, 20, 20)
+                      setPadding(15, 15, 15, 15)
                   }
 
                   val btnAdd = Button(this).apply { text = "+ افزودن شیء"; setOnClickListener { addNewObject() } }
-                  val btnInspect = Button(this).apply { text = "⚙ تنظیمات شیء"; setOnClickListener { openInspector() } }
+                  val btnInspect = Button(this).apply { text = "⚙ تنظیمات"; setOnClickListener { openInspector() } }
                   val btnMode = Button(this).apply {
-                      text = "▶ اجرای فیزیک"
+                      text = "▶ حالت بازی"
                       setOnClickListener {
                           viewport.isPlayMode = !viewport.isPlayMode
-                          text = if (viewport.isPlayMode) "⏸ ویرایش" else "▶ اجرای فیزیک"
+                          text = if (viewport.isPlayMode) "⏸ حالت ویرایش" else "▶ حالت بازی"
                       }
                   }
 
@@ -295,9 +352,22 @@ jobs:
                   topBar.addView(btnInspect)
                   topBar.addView(btnMode)
 
-                  val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-                  params.gravity = Gravity.TOP
-                  mainLayout.addView(topBar, params)
+                  val topParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+                  topParams.gravity = Gravity.TOP
+                  mainLayout.addView(topBar, topParams)
+
+                  // دکمه شلیک لمسی
+                  val btnShoot = Button(this).apply {
+                      text = "🔥 شلیک"
+                      setBackgroundColor(Color.parseColor("#ef4444"))
+                      setTextColor(Color.WHITE)
+                      setOnClickListener { viewport.shootBullet() }
+                  }
+                  val shootParams = FrameLayout.LayoutParams(250, 150).apply {
+                      gravity = Gravity.BOTTOM or Gravity.RIGHT
+                      setMargins(0, 0, 40, 40)
+                  }
+                  mainLayout.addView(btnShoot, shootParams)
 
                   setContentView(mainLayout)
               }
@@ -305,45 +375,45 @@ jobs:
               private fun addNewObject() {
                   val newObj = GameObject3D(
                       id = System.currentTimeMillis().toString(),
-                      name = "Object_${gameObjects.size + 1}",
-                      x = 400f,
-                      y = 200f,
-                      colorHex = listOf("#ef4444", "#10b981", "#facc15", "#a855f7").random()
+                      name = "Enemy_${gameObjects.size}",
+                      type = "enemy",
+                      x = 500f,
+                      y = 300f,
+                      colorHex = "#facc15"
                   )
                   gameObjects.add(newObj)
                   storage.saveProject(gameObjects)
-                  Toast.makeText(this, "شیء جدید ساخته شد. لمس کنید و بکشید!", Toast.LENGTH_SHORT).show()
+                  Toast.makeText(this, "دشمن جدید اضافه شد!", Toast.LENGTH_SHORT).show()
               }
 
               private fun openInspector() {
                   val obj = viewport.selectedObject
                   if (obj == null) {
-                      Toast.makeText(this, "لطفاً ابتدا یک شیء را روی صفحه لمس کنید!", Toast.LENGTH_SHORT).show()
+                      Toast.makeText(this, "یک شیء را لمس کنید!", Toast.LENGTH_SHORT).show()
                       return
                   }
 
                   val layout = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
-                      setPadding(40, 40, 40, 40)
+                      setPadding(30, 30, 30, 30)
                   }
 
-                  val txtInfo = TextView(this).apply { text = "ویرایش شیء: ${obj.name}"; textSize = 18f }
-                  val edtColor = EditText(this).apply { hint = "کد رنگ (مثلاً #ff0000)"; setText(obj.colorHex) }
-                  val chkGravity = CheckBox(this).apply { text = "فعال بودن جاذبه"; isChecked = obj.hasGravity }
+                  val edtColor = EditText(this).apply { hint = "کد رنگ"; setText(obj.colorHex) }
+                  val chkGravity = CheckBox(this).apply { text = "جاذبه"; isChecked = obj.hasGravity }
 
-                  layout.addView(txtInfo)
+                  layout.addView(TextView(this).apply { text = "ویرایش: ${obj.name}" })
                   layout.addView(edtColor)
                   layout.addView(chkGravity)
 
                   androidx.appcompat.app.AlertDialog.Builder(this)
-                      .setTitle("Inspector (تنظیمات شیء)")
+                      .setTitle("Inspector")
                       .setView(layout)
-                      .setPositiveButton("ثبت") { _, _ ->
+                      .setPositiveButton("ذخیره") { _, _ ->
                           obj.colorHex = edtColor.text.toString()
                           obj.hasGravity = chkGravity.isChecked
                           storage.saveProject(gameObjects)
                       }
-                      .setNegativeButton("حذف شیء") { _, _ ->
+                      .setNegativeButton("حذف") { _, _ ->
                           gameObjects.remove(obj)
                           viewport.selectedObject = null
                           storage.saveProject(gameObjects)
@@ -358,7 +428,7 @@ jobs:
           }
           EOF
 
-          # ۵. مانیفست و تنظیمات Gradle
+          # ۶. مانیفست و تنظیمات build.gradle
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="com.persiangulf.gameengine">
@@ -433,7 +503,7 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PersianGulfEngine3D-Module1
+          name: PersianGulfEngine3D-Module2
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Commit and Push changes
@@ -441,5 +511,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Implement Engine Module 1: 3D Scene Viewport, Gizmo & Inspector" || echo "No changes"
+          git commit -m "Upgrade Persian Gulf Engine Module 2: Add Shooting, Physics Collision & Sound Effects" || echo "No changes"
           git push
