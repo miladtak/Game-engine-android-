@@ -1,4 +1,4 @@
-name: Build 2D/3D Native Android Game Engine
+name: Build Game Engine Persian Gulf (Full Native 2D/3D + Scripting)
 
 on:
   workflow_dispatch:
@@ -12,42 +12,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Clean old files and setup 2D/3D Engine
+      - name: Clean and Setup Persian Gulf Game Engine
         run: |
-          # پاکسازی فایل‌های قبلی برای شروع تمیز
+          # پاکسازی کامل برای ساختار جدید
           rm -rf app/src/main/java/com/persiangulf/gameengine/*
           rm -f build.gradle app/build.gradle app/src/main/AndroidManifest.xml
 
-          # ساخت پوشه‌های ساختار جدید
+          # ساخت پوشه‌های استاندارد اندروید استودیو
           mkdir -p app/src/main/java/com/persiangulf/gameengine/model
           mkdir -p app/src/main/java/com/persiangulf/gameengine/engine
+          mkdir -p app/src/main/java/com/persiangulf/gameengine/ui
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/layout
 
-          # ۱. مدل داده‌های پیشرفته (پشتیبانی از دوبعدی و سه‌بعدی با مختصات Z و چرخش)
+          # ۱. مدل داده‌ها با پشتیبانی از مختصات Z (سه‌بعدی) و اسکریپت‌های رفتاری
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/GameObject.kt
           package com.persiangulf.gameengine.model
 
           data class GameObject(
               var id: String,
               var name: String,
-              var type: String, // 'player', 'platform', 'enemy', 'coin', 'goal', 'box_3d'
-              var is3D: Boolean = false, // تشخیص حالت سه‌بعدی یا دوبعدی
+              var type: String, // 'player', 'platform', 'enemy', 'coin', 'box_3d', 'hazard'
+              var is3D: Boolean = false,
               var x: Float,
               var y: Float,
-              var z: Float = 0f, // عمق در محیط سه‌بعدی
+              var z: Float = 0f, // عمق سه‌بعدی
               var width: Float,
               var height: Float,
-              var depth: Float = 50f, // ضخامت برای اشیاء سه‌بعدی
-              var rotation: Float = 0f, // زاویه چرخش
+              var depth: Float = 40f,
               var color: String,
               var speed: Float = 200f,
               var jumpPower: Float = 500f,
-              var health: Int = 3
+              var health: Int = 3,
+              var customScript: String = "" // اسکریپت سفارشی کاربر برای شیء
           )
           EOF
 
-          # ۲. هسته موتور گرافیکی ترکیبی (2D & 3D Isometric Renderer)
+          # ۲. هسته موتور گرافیکی و فیزیک بازی (2D & 3D Isometric Renderer)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/GameEngineView.kt
           package com.persiangulf.gameengine.engine
 
@@ -66,9 +67,9 @@ jobs:
               private var running = false
               private val paint = Paint()
               
-              private var player: GameObject? = objects.find { it.type == "player" }
+              private var player: GameObject? = objects.find { type == "player" } || objects.firstOrNull()
               private var playerVelocityY = 0f
-              private val gravity = 800f
+              private val gravity = 850f
               private var isGrounded = false
 
               init {
@@ -117,12 +118,14 @@ jobs:
 
               private fun update(dt: Float) {
                   player?.let { p ->
+                      // اعمال فیزیک جاذبه
                       if (!isGrounded) {
                           playerVelocityY += gravity * dt
                       }
                       p.y += playerVelocityY * dt
 
-                      // فیزیک برخورد با سکوهای دوبعدی و سه‌بعدی
+                      // بررسی برخورد با زمین و سکوها
+                      isGrounded = false
                       for (obj in objects) {
                           if (obj.type == "platform" || obj.type == "box_3d") {
                               if (p.x < obj.x + obj.width && p.x + p.width > obj.x &&
@@ -140,28 +143,25 @@ jobs:
                   if (!holder.surface.isValid) return
                   val canvas: Canvas = holder.lockCanvas()
                   
-                  // پس‌زمینه محیط بازی
-                  canvas.drawColor(Color.parseColor("#0f172a"))
+                  # رنگ پس‌زمینه محیط بازی (خلیج فارس / دارک فانتزی)
+                  canvas.drawColor(Color.parseColor("#090d16"))
 
-                  // مرتب‌سازی المان‌ها بر اساس عمق (برای نمایش صحیح سه‌بعدی و ایزومتریک)
+                  // مرتب‌سازی لایه‌ها برای نمایش صحیح دوبعدی و سه‌بعدی (براساس Z و Y)
                   val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
 
                   for (obj in sortedObjects) {
                       paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
                       
                       if (obj.is3D) {
-                          // شبیه‌سازی سه‌بعدی و جعبه‌ای با ترسیم لایه‌های مکعبی
-                          val depthOffset = obj.depth * 0.4f
+                          // رندر سه‌بعدی جعبه‌ای (مکعب ایزومتریک)
+                          val dOff = obj.depth * 0.35f
+                          paint.alpha = 140
+                          canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
                           
-                          // سایه و وجه پایینی مکعب سه‌بعدی
-                          paint.alpha = 150
-                          canvas.drawRect(obj.x + depthOffset, obj.y - depthOffset, obj.x + obj.width + depthOffset, obj.y + obj.height - depthOffset, paint)
-                          
-                          // وجه اصلی مکعب سه‌بعدی
                           paint.alpha = 255
                           canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
                       } else {
-                          // المان استاندارد دوبعدی
+                          // رندر دوبعدی استاندارد
                           paint.alpha = 255
                           canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
                       }
@@ -173,7 +173,7 @@ jobs:
               override fun onTouchEvent(event: MotionEvent): Boolean {
                   if (event.action == MotionEvent.ACTION_DOWN) {
                       if (isGrounded) {
-                          playerVelocityY = -650f
+                          playerVelocityY = -680f
                           isGrounded = false
                       }
                   }
@@ -190,7 +190,7 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
-                  android:label="موتور بازی‌سازی خلیج فارس (2D/3D)"
+                  android:label="Game Engine Persian Gulf"
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:supportsRtl="true"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
@@ -207,7 +207,7 @@ jobs:
           </manifest>
           EOF
 
-          # ۴. تنظیمات Gradle اصلی پروژه
+          # ۴. تنظیمات Gradle اصلی
           cat << 'EOF' > build.gradle
           buildscript {
               repositories {
@@ -267,9 +267,9 @@ jobs:
           }
           EOF
 
-          # اعمال تغییرات و پوش به گیت‌هاب
+          # اعمال تغییرات و ثبت در گیت‌هاب
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Reset and setup 2D/3D native engine structure" || echo "No changes to commit"
+          git commit -m "Initialize Game Engine Persian Gulf with 2D/3D and Scripting support" || echo "No changes to commit"
           git push
