@@ -1,4 +1,4 @@
-name: Upgrade Pars Game Engine - Module 3 (Lighting, Particles & Joystick)
+name: Upgrade Pars Game Engine - Module 4 (Character Rigging & Walking Animation)
 
 on:
   workflow_dispatch:
@@ -65,14 +65,14 @@ jobs:
           )
           EOF
 
-          # ۲. مدل داده اصلی اشیاء موتور پارس (GameObject3D)
+          # ۲. مدل داده اشیاء موتور پارس (GameObject3D)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/model/GameObject3D.kt
           package com.persiangulf.gameengine.model
 
           data class GameObject3D(
               var id: String,
               var name: String,
-              var type: String = "cube", // player, enemy, light, platform
+              var type: String = "cube", // player, enemy, platform
               var x: Float = 0f,
               var y: Float = 0f,
               var z: Float = 0f,
@@ -80,11 +80,12 @@ jobs:
               var scaleY: Float = 1f,
               var scaleZ: Float = 1f,
               var colorHex: String = "#38bdf8",
-              var textureStyle: String = "solid", // solid, grid, metallic
+              var textureStyle: String = "solid",
               var hasGravity: Boolean = true,
               var health: Int = 100,
               var velocityY: Float = 0f,
-              var isSelected: Boolean = false
+              var isWalking: Boolean = false,
+              var animFrame: Float = 0f
           )
           EOF
 
@@ -116,7 +117,7 @@ jobs:
           }
           EOF
 
-          # ۴. هسته گرافیکی، ذرات و نورپردازی موتور پارس (EngineViewport)
+          # ۴. هسته اصلی رندر، انیمیشن کاراکتر و دوربین در موتور پارس (EngineViewport)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/engine/EngineViewport.kt
           package com.persiangulf.gameengine.engine
 
@@ -131,6 +132,7 @@ jobs:
           import android.view.SurfaceView
           import com.persiangulf.gameengine.model.GameObject3D
           import com.persiangulf.gameengine.model.Particle
+          import kotlin.math.sin
 
           class EngineViewport(context: Context, val objects: MutableList<GameObject3D>) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
               private var thread: Thread? = null
@@ -144,9 +146,7 @@ jobs:
               val particles = mutableListOf<Particle>()
               private val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
 
-              // موقعیت نور اصلی در محیط
-              var lightX = 300f
-              var lightY = 100f
+              var cameraOffsetX = 0f
 
               init { holder.addCallback(this) }
 
@@ -161,18 +161,16 @@ jobs:
                   try { thread?.join() } catch (e: InterruptedException) { e.printStackTrace() }
               }
 
-              fun spawnExplosion(x: Float, y: Float) {
-                  for (i in 0..15) {
-                      particles.add(
-                          Particle(
-                              x, y,
-                              (-300..300).random().toFloat(),
-                              (-300..300).random().toFloat(),
-                              listOf("#facc15", "#ef4444", "#f97316").random()
-                          )
-                      )
-                  }
-                  toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 40)
+              fun movePlayer(dir: Float) {
+                  val player = objects.find { it.type == "player" } ?: return
+                  player.x += dir * 12f
+                  player.isWalking = true
+                  player.animFrame += 0.2f
+              }
+
+              fun stopPlayer() {
+                  val player = objects.find { it.type == "player" } ?: return
+                  player.isWalking = false
               }
 
               override fun run() {
@@ -202,12 +200,17 @@ jobs:
               }
 
               private fun updateGameLogic(dt: Float) {
+                  val player = objects.find { it.type == "player" }
+                  player?.let {
+                      cameraOffsetX = it.x - 400f
+                  }
+
                   for (obj in objects) {
-                      if (obj.hasGravity && obj.y < 600f) {
+                      if (obj.hasGravity && obj.y < 500f) {
                           obj.velocityY += 980f * dt
                           obj.y += obj.velocityY * dt
-                          if (obj.y >= 600f) {
-                              obj.y = 600f
+                          if (obj.y >= 500f) {
+                              obj.y = 500f
                               obj.velocityY = 0f
                           }
                       }
@@ -219,79 +222,92 @@ jobs:
                   val canvas: Canvas = holder.lockCanvas()
                   canvas.drawColor(Color.parseColor("#090d16"))
 
-                  // ۱. رسم نور محیطی (Light Source Glow)
-                  paint.color = Color.parseColor("#fef08a")
-                  paint.alpha = 40
-                  canvas.drawCircle(lightX, lightY, 180f, paint)
-                  paint.alpha = 255
-                  canvas.drawCircle(lightX, lightY, 20f, paint)
-
-                  // ۲. رسم گرید و زمین
+                  // ۱. گرید جهان بازی همراه با افست دوربین
                   paint.color = Color.parseColor("#1e293b")
                   paint.strokeWidth = 2f
-                  for (i in 0..1080 step 100) canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 2000f, paint)
+                  for (i in -1000..3000 step 100) {
+                      val screenX = i.toFloat() - cameraOffsetX
+                      canvas.drawLine(screenX, 0f, screenX, 2000f, paint)
+                  }
                   
                   paint.color = Color.parseColor("#22c55e")
                   paint.strokeWidth = 6f
-                  canvas.drawLine(0f, 660f, 1080f, 660f, paint)
+                  canvas.drawLine(-1000f - cameraOffsetX, 600f, 3000f - cameraOffsetX, 600f, paint)
 
-                  // ۳. رندر ذرات (Particle Effects)
+                  // ۲. رندر ذرات
                   for (p in particles) {
                       paint.color = Color.parseColor(p.colorHex)
                       paint.alpha = (p.life * 255).toInt().coerceIn(0, 255)
-                      canvas.drawCircle(p.x, p.y, 8f * p.life, paint)
+                      canvas.drawCircle(p.x - cameraOffsetX, p.y, 8f * p.life, paint)
                   }
 
-                  // ۴. رندر اشیاء با سایه پویا بر اساس منبع نور
+                  // ۳. رندر اشیاء و کاراکتر اسکلتی موتور «پارس»
                   for (obj in objects) {
-                      val width = 100f * obj.scaleX
-                      val height = 100f * obj.scaleY
+                      val renderX = obj.x - cameraOffsetX
+                      val renderY = obj.y
 
-                      // محاسبه زوایای سایه متناسب با موقعیت نور
-                      val shadowOffsetX = (obj.x - lightX) * 0.2f
-                      val shadowOffsetY = (650f - lightY) * 0.1f
-
-                      // سایه متحرک سه‌بعدی
-                      paint.color = Color.parseColor("#000000")
-                      paint.alpha = 90
-                      canvas.drawOval(obj.x + shadowOffsetX, 650f + shadowOffsetY, obj.x + width + shadowOffsetX, 670f + shadowOffsetY, paint)
-
-                      // بدنه شیء
-                      paint.color = Color.parseColor(if (obj.colorHex.startsWith("#")) obj.colorHex else "#38bdf8")
-                      paint.alpha = 255
-                      canvas.drawRect(obj.x, obj.y, obj.x + width, obj.y + height, paint)
-
-                      // خطوط تکسچر/بافت
-                      if (obj.textureStyle == "grid") {
-                          paint.color = Color.BLACK
-                          paint.strokeWidth = 3f
-                          canvas.drawLine(obj.x, obj.y + height / 2, obj.x + width, obj.y + height / 2, paint)
-                          canvas.drawLine(obj.x + width / 2, obj.y, obj.x + width / 2, obj.y + height, paint)
-                      }
-
-                      // کادر انتخاب
-                      if (obj == selectedObject && !isPlayMode) {
-                          paint.style = Paint.Style.STROKE
-                          paint.color = Color.parseColor("#f59e0b")
-                          paint.strokeWidth = 5f
-                          canvas.drawRect(obj.x - 10f, obj.y - 10f, obj.x + width + 10f, obj.y + height + 10f, paint)
-                          paint.style = Paint.Style.FILL
+                      if (obj.type == "player") {
+                          drawSkeletalCharacter(canvas, renderX, renderY, obj)
+                      } else {
+                          // رسم اشیاء عادی
+                          val width = 100f * obj.scaleX
+                          val height = 100f * obj.scaleY
+                          paint.color = Color.parseColor(if (obj.colorHex.startsWith("#")) obj.colorHex else "#ef4444")
+                          paint.alpha = 255
+                          canvas.drawRect(renderX, renderY, renderX + width, renderY + height, paint)
                       }
                   }
                   holder.unlockCanvasAndPost(canvas)
               }
 
+              private fun drawSkeletalCharacter(canvas: Canvas, x: Float, y: Float, obj: GameObject3D) {
+                  val legAngle = if (obj.isWalking) sin(obj.animFrame.toDouble()).toFloat() * 30f else 0f
+                  val armAngle = if (obj.isWalking) sin((obj.animFrame + 3.14f).toDouble()).toFloat() * 25f else 0f
+
+                  // ۱. سایه
+                  paint.color = Color.BLACK
+                  paint.alpha = 80
+                  canvas.drawOval(x - 30f, 595f, x + 30f, 610f, paint)
+
+                  // ۲. پاها (Legs)
+                  paint.color = Color.parseColor("#1e293b")
+                  paint.strokeWidth = 10f
+                  paint.alpha = 255
+                  // پای چپ
+                  canvas.drawLine(x - 10f, y + 40f, x - 10f + legAngle, y + 90f, paint)
+                  // پای راست
+                  canvas.drawLine(x + 10f, y + 40f, x + 10f - legAngle, y + 90f, paint)
+
+                  // ۳. تنه / بدن (Torso)
+                  paint.color = Color.parseColor(obj.colorHex)
+                  canvas.drawRect(x - 20f, y - 20f, x + 20f, y + 40f, paint)
+
+                  // ۴. دست‌ها (Arms)
+                  paint.color = Color.parseColor("#0284c7")
+                  paint.strokeWidth = 8f
+                  // دست چپ
+                  canvas.drawLine(x - 20f, y - 10f, x - 35f - armAngle, y + 25f, paint)
+                  // دست راست
+                  canvas.drawLine(x + 20f, y - 10f, x + 35f + armAngle, y + 25f, paint)
+
+                  // ۵. سر و چشم‌ها (Head & Eyes)
+                  paint.color = Color.parseColor("#fde047")
+                  canvas.drawCircle(x, y - 40f, 20f, paint)
+                  // چشم‌ها
+                  paint.color = Color.BLACK
+                  canvas.drawCircle(x + 8f, y - 43f, 3f, paint)
+                  canvas.drawCircle(x - 8f, y - 43f, 3f, paint)
+              }
+
               override fun onTouchEvent(event: MotionEvent): Boolean {
                   if (isPlayMode) return true
-                  val x = event.x
+                  val x = event.x + cameraOffsetX
                   val y = event.y
 
                   when (event.action) {
                       MotionEvent.ACTION_DOWN -> {
                           selectedObject = objects.findLast { obj ->
-                              val w = 100f * obj.scaleX
-                              val h = 100f * obj.scaleY
-                              x >= obj.x && x <= obj.x + w && y >= obj.y && y <= obj.y + h
+                              x >= obj.x - 50f && x <= obj.x + 50f && y >= obj.y - 50f && y <= obj.y + 50f
                           }
                           lastTouchX = x
                           lastTouchY = y
@@ -310,13 +326,14 @@ jobs:
           }
           EOF
 
-          # ۵. رابط کاربری اصلی موتور پارس (MainActivity)
+          # ۵. رابط کاربری موتور پارس با کلیدهای حرکتی راه‌رفتن (MainActivity)
           cat << 'EOF' > app/src/main/java/com/persiangulf/gameengine/MainActivity.kt
           package com.persiangulf.gameengine
 
           import android.graphics.Color
           import android.os.Bundle
           import android.view.Gravity
+          import android.view.MotionEvent
           import android.widget.*
           import androidx.appcompat.app.AppCompatActivity
           import com.persiangulf.gameengine.engine.EngineViewport
@@ -333,8 +350,8 @@ jobs:
                   storage = ProjectStorage(this)
                   val loaded = storage.loadProject()
                   if (loaded.isEmpty()) {
-                      gameObjects.add(GameObject3D("1", "Player", "player", 150f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", "grid", false))
-                      gameObjects.add(GameObject3D("2", "Enemy_Box", "enemy", 600f, 500f, 0f, 1.2f, 1.2f, 1f, "#ef4444", "solid", true))
+                      gameObjects.add(GameObject3D("1", "SkeletalPlayer", "player", 200f, 500f, 0f, 1f, 1f, 1f, "#38bdf8", "solid", false))
+                      gameObjects.add(GameObject3D("2", "Monster", "enemy", 700f, 500f, 0f, 1.2f, 1.2f, 1f, "#ef4444", "solid", true))
                       storage.saveProject(gameObjects)
                   } else {
                       gameObjects.addAll(loaded)
@@ -344,29 +361,62 @@ jobs:
                   viewport = EngineViewport(this, gameObjects)
                   mainLayout.addView(viewport)
 
-                  // نوار ابزار اصلی بالای موتور «پارس»
+                  // نوار ابزار اصلی موتور «پارس»
                   val topBar = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       setBackgroundColor(Color.parseColor("#cc0f172a"))
                       setPadding(15, 15, 15, 15)
                   }
 
-                  val btnAdd = Button(this).apply { text = "+ ساخت شیء"; setOnClickListener { addNewObject() } }
-                  val btnInspect = Button(this).apply { text = "⚙ تنظیمات"; setOnClickListener { openInspector() } }
-                  val btnFx = Button(this).apply {
-                      text = "💥 افکت ذرات"
+                  val btnAdd = Button(this).apply { text = "+ دشمن جدید"; setOnClickListener { addNewObject() } }
+                  val btnMode = Button(this).apply {
+                      text = "▶ تست بازی"
                       setOnClickListener {
-                          viewport.selectedObject?.let { obj -> viewport.spawnExplosion(obj.x + 50f, obj.y + 50f) }
+                          viewport.isPlayMode = !viewport.isPlayMode
+                          text = if (viewport.isPlayMode) "⏸ حالت ویرایش" else "▶ تست بازی"
                       }
                   }
 
                   topBar.addView(btnAdd)
-                  topBar.addView(btnInspect)
-                  topBar.addView(btnFx)
+                  topBar.addView(btnMode)
 
                   val topParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
                   topParams.gravity = Gravity.TOP
                   mainLayout.addView(topBar, topParams)
+
+                  // دکمه‌های حرکت انیمیشنی به چپ و راست
+                  val controllerLayout = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                  }
+
+                  val btnLeft = Button(this).apply { text = "◀ چپ" }
+                  btnLeft.setOnTouchListener { _, event ->
+                      if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
+                          viewport.movePlayer(-1f)
+                      } else if (event.action == MotionEvent.ACTION_UP) {
+                          viewport.stopPlayer()
+                      }
+                      true
+                  }
+
+                  val btnRight = Button(this).apply { text = "راست ▶" }
+                  btnRight.setOnTouchListener { _, event ->
+                      if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
+                          viewport.movePlayer(1f)
+                      } else if (event.action == MotionEvent.ACTION_UP) {
+                          viewport.stopPlayer()
+                      }
+                      true
+                  }
+
+                  controllerLayout.addView(btnLeft)
+                  controllerLayout.addView(btnRight)
+
+                  val ctrlParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                      gravity = Gravity.BOTTOM or Gravity.LEFT
+                      setMargins(30, 0, 0, 30)
+                  }
+                  mainLayout.addView(controllerLayout, ctrlParams)
 
                   setContentView(mainLayout)
               }
@@ -374,51 +424,15 @@ jobs:
               private fun addNewObject() {
                   val newObj = GameObject3D(
                       id = System.currentTimeMillis().toString(),
-                      name = "Object_${gameObjects.size}",
-                      type = "cube",
-                      x = 400f,
-                      y = 300f,
-                      colorHex = "#facc15",
-                      textureStyle = "grid"
+                      name = "Enemy_${gameObjects.size}",
+                      type = "enemy",
+                      x = (500..1200).random().toFloat(),
+                      y = 500f,
+                      colorHex = "#ef4444"
                   )
                   gameObjects.add(newObj)
                   storage.saveProject(gameObjects)
-                  Toast.makeText(this, "شیء جدید در موتور پارس ساخته شد!", Toast.LENGTH_SHORT).show()
-              }
-
-              private fun openInspector() {
-                  val obj = viewport.selectedObject
-                  if (obj == null) {
-                      Toast.makeText(this, "لطفاً ابتدا یک شیء را انتخاب کنید!", Toast.LENGTH_SHORT).show()
-                      return
-                  }
-
-                  val layout = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(30, 30, 30, 30)
-                  }
-
-                  val edtColor = EditText(this).apply { hint = "کد رنگ"; setText(obj.colorHex) }
-                  val chkGravity = CheckBox(this).apply { text = "فعال بودن جاذبه"; isChecked = obj.hasGravity }
-
-                  layout.addView(TextView(this).apply { text = "تنظیمات موتور پارس - ${obj.name}" })
-                  layout.addView(edtColor)
-                  layout.addView(chkGravity)
-
-                  androidx.appcompat.app.AlertDialog.Builder(this)
-                      .setTitle("Pars Inspector")
-                      .setView(layout)
-                      .setPositiveButton("ذخیره") { _, _ ->
-                          obj.colorHex = edtColor.text.toString()
-                          obj.hasGravity = chkGravity.isChecked
-                          storage.saveProject(gameObjects)
-                      }
-                      .setNegativeButton("حذف شیء") { _, _ ->
-                          gameObjects.remove(obj)
-                          viewport.selectedObject = null
-                          storage.saveProject(gameObjects)
-                      }
-                      .show()
+                  Toast.makeText(this, "دشمن جدید اضافه شد!", Toast.LENGTH_SHORT).show()
               }
 
               override fun onPause() {
@@ -503,7 +517,7 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ParsEngine3D-Module3
+          name: ParsEngine3D-Module4
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Commit and Push changes
@@ -511,5 +525,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Upgrade Pars Engine Module 3: Lighting System, Particle Physics & Textures" || echo "No changes"
+          git commit -m "Upgrade Pars Engine Module 4: Skeletal Rigging, Walking Animation & Camera Tracking" || echo "No changes"
           git push
