@@ -12,11 +12,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 11
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
       - name: Setup Project Structure & Gradle Configs
         run: |
@@ -201,6 +201,7 @@ jobs:
                           canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
                       }
                   }
+                  canvas.restore()
                   holder.unlockCanvasAndPost(canvas)
               }
 
@@ -270,7 +271,7 @@ jobs:
           </manifest>
           EOF
 
-          # ۷. تنظیمات ریشه تنظیمات گرادل (settings.gradle)
+          # ۷. تنظیمات ریشه (settings.gradle)
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
@@ -337,9 +338,7 @@ jobs:
         run: chmod +x gradlew || true
 
       - name: Build Debug APK
-        run: |
-          gradle wrapper --gradle-version 7.5 || true
-          ./gradlew assembleDebug
+        run: ./gradlew assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -352,5 +351,5 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Fix Gradle settings and root structure for assembleDebug" || echo "No changes"
+          git commit -m "Use Java 11 and stable Gradle 7.4.2 configuration" || echo "No changes"
           git push
