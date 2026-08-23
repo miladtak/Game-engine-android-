@@ -8,14 +8,16 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import com.persiangulf.gameengine.model.GameObject
+import com.persiangulf.gameengine.script.ScriptParser
 
 class GameEngineView(context: Context, private val objects: MutableList<GameObject>) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
     
     private var thread: Thread? = null
     private var running = false
     private val paint = Paint()
+    private val scriptParser = ScriptParser()
     
-    private var player: GameObject? = objects.find { type == "player" } || objects.firstOrNull()
+    private var player: GameObject? = objects.find { it.type == "player" } ?: objects.firstOrNull()
     private var playerVelocityY = 0f
     private val gravity = 850f
     private var isGrounded = false
@@ -66,13 +68,11 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
 
     private fun update(dt: Float) {
         player?.let { p ->
-            // اعمال فیزیک جاذبه
             if (!isGrounded) {
                 playerVelocityY += gravity * dt
             }
             p.y += playerVelocityY * dt
 
-            // بررسی برخورد با زمین و سکوها
             isGrounded = false
             for (obj in objects) {
                 if (obj.type == "platform" || obj.type == "box_3d") {
@@ -83,6 +83,10 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
                         isGrounded = true
                     }
                 }
+                // اجرای اسکریپت‌های سفارشی شیء در صورت وجود
+                if (obj.script.isNotEmpty()) {
+                    scriptParser.execute(obj, obj.script)
+                }
             }
         }
     }
@@ -90,26 +94,21 @@ class GameEngineView(context: Context, private val objects: MutableList<GameObje
     private fun draw() {
         if (!holder.surface.isValid) return
         val canvas: Canvas = holder.lockCanvas()
-        
-        # رنگ پس‌زمینه محیط بازی (خلیج فارس / دارک فانتزی)
         canvas.drawColor(Color.parseColor("#090d16"))
 
-        // مرتب‌سازی لایه‌ها برای نمایش صحیح دوبعدی و سه‌بعدی (براساس Z و Y)
         val sortedObjects = objects.sortedWith(compareBy({ it.z }, { it.y }))
 
         for (obj in sortedObjects) {
             paint.color = Color.parseColor(if (obj.color.startsWith("#")) obj.color else "#38bdf8")
             
             if (obj.is3D) {
-                // رندر سه‌بعدی جعبه‌ای (مکعب ایزومتریک)
                 val dOff = obj.depth * 0.35f
-                paint.alpha = 140
+                paint.alpha = 130
                 canvas.drawRect(obj.x + dOff, obj.y - dOff, obj.x + obj.width + dOff, obj.y + obj.height - dOff, paint)
                 
                 paint.alpha = 255
                 canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
             } else {
-                // رندر دوبعدی استاندارد
                 paint.alpha = 255
                 canvas.drawRect(obj.x, obj.y, obj.x + obj.width, obj.y + obj.height, paint)
             }
