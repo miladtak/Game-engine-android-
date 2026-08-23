@@ -12,15 +12,13 @@ class ProjectStorage(private val context: Context) {
 
     fun saveProject(objects: List<GameObject>) {
         val json = gson.toJson(objects)
-        val file = File(context.filesDir, fileName)
-        file.writeText(json)
+        File(context.filesDir, fileName).writeText(json)
     }
 
     fun loadProject(): MutableList<GameObject> {
         val file = File(context.filesDir, fileName)
         if (!file.exists()) return mutableListOf()
-        val json = file.readText()
         val type = object : TypeToken<MutableList<GameObject>>() {}.type
-        return gson.fromJson(json, type) ?: mutableListOf()
+        return gson.fromJson(file.readText(), type) ?: mutableListOf()
     }
 }

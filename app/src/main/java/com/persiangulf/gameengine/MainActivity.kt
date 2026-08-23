@@ -1,7 +1,6 @@
 package com.persiangulf.gameengine
 
 import android.os.Bundle
-import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.persiangulf.gameengine.engine.GameEngineView
 import com.persiangulf.gameengine.model.GameObject
@@ -13,10 +12,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         storage = ProjectStorage(this)
-        
-        // بارگذاری پروژه یا ساخت نمونه پیش‌فرض اگر خالی باشد
         val loaded = storage.loadProject()
         if (loaded.isEmpty()) {
             gameObjects.add(GameObject("1", "Player", "player", false, 100f, 400f, 0f, 60f, 60f, 40f, "#38bdf8", 200f, 600f, ""))
@@ -25,10 +21,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             gameObjects.addAll(loaded)
         }
-
-        // اجرای موتور بازی روی صفحه
-        val engineView = GameEngineView(this, gameObjects)
-        setContentView(engineView)
+        setContentView(GameEngineView(this, gameObjects))
     }
 
     override fun onPause() {

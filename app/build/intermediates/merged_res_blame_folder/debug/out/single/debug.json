@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.persiangulf.gameengine.app-merged_res-29:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.persiangulf.gameengine.app-main-31:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.persiangulf.gameengine.app-merged_res-29:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.persiangulf.gameengine.app-main-31:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    }
+]
